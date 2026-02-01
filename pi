@@ -139,12 +139,39 @@ list_projects() {
     exit 0
 }
 
+# Container helpers
+container_exists() {
+    container list --all 2>/dev/null | grep -q "$CONTAINER_NAME"
+}
+
+container_running() {
+    container list 2>/dev/null | grep -q "$CONTAINER_NAME"
+}
+
+container_uses_sleep() {
+    container inspect "$CONTAINER_NAME" 2>/dev/null | grep -q "sleep infinity"
+}
+
+ensure_container_compat() {
+    if container_exists && ! container_uses_sleep; then
+        echo -e "${YELLOW}Updating container entrypoint...${NC}"
+        container stop "$CONTAINER_NAME" 2>/dev/null || true
+        container delete "$CONTAINER_NAME" 2>/dev/null || true
+    fi
+}
+
+wait_for_container_running() {
+    container_running && return
+    (while ! container_running; do sleep 0.2; done) &
+    spinner $! "Starting container"
+}
+
 # Show status
 show_status() {
     header
     echo -e "${BOLD}Container:${NC}"
-    if container list --all 2>/dev/null | grep -q "$CONTAINER_NAME"; then
-        if container list 2>/dev/null | grep -q "$CONTAINER_NAME"; then
+    if container_exists; then
+        if container_running; then
             echo -e "  State: ${GREEN}● running${NC}"
         else
             echo -e "  State: ${YELLOW}○ stopped${NC}"
@@ -438,48 +465,42 @@ if ! image_exists; then
     container build -t "$IMAGE_NAME" "$SCRIPT_DIR"
 fi
 
+# Ensure container uses compatible entrypoint
+ensure_container_compat
+
 # Run in container
-if container list --all 2>/dev/null | grep -q "$CONTAINER_NAME"; then
-    if container list 2>/dev/null | grep -q "$CONTAINER_NAME"; then
-        # Already running - exec into it
-        [ "$CONTAINER_CMD" = "pi" ] && echo -e "${DIM}Attaching to running container...${NC}"
-        start_headless_browser_in_container
-        exec container exec -it -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
-    else
-        # Exists but stopped - start then exec to set workdir
+CONTAINER_WAS_RUNNING=false
+if container_running; then
+    CONTAINER_WAS_RUNNING=true
+fi
+
+if container_exists; then
+    if ! container_running; then
         echo -e "${DIM}Starting container...${NC}"
         container start "$CONTAINER_NAME" >/dev/null
-        start_headless_browser_in_container
-        exec container exec -it -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
+        wait_for_container_running
     fi
 else
-    # Create new container
-    [ "$CONTAINER_CMD" = "pi" ] && echo -e "${DIM}Creating container...${NC}"
-
-    if [ "$CONTAINER_CMD" = "pi" ] && [ "$HEADLESS_BROWSER" != "0" ]; then
-        RUN_CMD="$BROWSER_BOOTSTRAP_CMD; exec pi \"\$@\""
-        exec container run \
-            -it \
-            --name "$CONTAINER_NAME" \
-            --volume "$WORKSPACE:/workspace" \
-            --volume "$CONFIG:/root/.pi/agent" \
-            -w "$WORKDIR" \
-            --cpus 4 \
-            --memory 4G \
-            --ssh \
-            "$IMAGE_NAME" \
-            /bin/bash -lc "$RUN_CMD" -- "$@"
-    else
-        exec container run \
-            -it \
-            --name "$CONTAINER_NAME" \
-            --volume "$WORKSPACE:/workspace" \
-            --volume "$CONFIG:/root/.pi/agent" \
-            -w "$WORKDIR" \
-            --cpus 4 \
-            --memory 4G \
-            --ssh \
-            "$IMAGE_NAME" \
-            $CONTAINER_CMD "$@"
-    fi
+    echo -e "${DIM}Creating container...${NC}"
+    container run -d \
+        --name "$CONTAINER_NAME" \
+        --volume "$WORKSPACE:/workspace" \
+        --volume "$CONFIG:/root/.pi/agent" \
+        -w "$WORKDIR" \
+        --cpus 4 \
+        --memory 4G \
+        --ssh \
+        "$IMAGE_NAME" \
+        /bin/bash -lc "sleep infinity" >/dev/null
+    wait_for_container_running
 fi
+
+start_headless_browser_in_container
+container exec -it -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
+EXIT_CODE=$?
+
+if [ "$CONTAINER_WAS_RUNNING" = false ]; then
+    container stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+fi
+
+exit $EXIT_CODE
