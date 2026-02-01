@@ -211,6 +211,13 @@ rebuild_image() {
     read -p "Continue? (y/N) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Ensure container system is running
+        if ! container list &>/dev/null; then
+            echo -e "${CYAN}Starting container system...${NC}"
+            container system start >/dev/null 2>&1 &
+            spinner $! "Starting container system"
+        fi
+
         container stop "$CONTAINER_NAME" 2>/dev/null || true
         container delete "$CONTAINER_NAME" 2>/dev/null || true
         container image delete "$IMAGE_NAME" 2>/dev/null || true
