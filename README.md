@@ -217,7 +217,7 @@ pi-container --config shared # uses ~/.pi/agent directly
 pi-container --import-config
 ```
 
-> On first run, if `~/pi/config` is empty, it auto‑imports once from `~/.pi/agent`.
+> On first run, if `~/pi/config` is empty, you’ll be **prompted** to import from `~/.pi/agent`.
 
 **Project-specific config:**
 ```bash

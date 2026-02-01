@@ -572,10 +572,21 @@ if [ "$CONFIG_DIR" != "$LOCAL_CONFIG_DIR" ]; then
 
     if [ "$IMPORT_CONFIG" = true ]; then
         import_local_config
-        touch "$IMPORT_MARKER" 2>/dev/null || true
+        echo "yes" > "$IMPORT_MARKER" 2>/dev/null || true
     elif [ "$CONFIG_EMPTY" = true ] && [ ! -f "$IMPORT_MARKER" ]; then
-        import_local_config
-        touch "$IMPORT_MARKER" 2>/dev/null || true
+        if [ -t 0 ] && [ -t 1 ] && [ -d "$LOCAL_CONFIG_DIR" ]; then
+            echo ""
+            echo -e "${YELLOW}Import local pi config?${NC}"
+            echo "This will copy ~/.pi/agent into $CONFIG_DIR (one-time)."
+            read -p "Import now? (y/N) " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                import_local_config
+                echo "yes" > "$IMPORT_MARKER" 2>/dev/null || true
+            else
+                echo "no" > "$IMPORT_MARKER" 2>/dev/null || true
+            fi
+        fi
     fi
 fi
 
