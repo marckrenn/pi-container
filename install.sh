@@ -34,8 +34,22 @@ ln -sf "$INSTALL_DIR/pi" "$HOME/.local/bin/pi-container"
 # Ensure PATH includes ~/.local/bin
 if ! echo "$PATH" | tr ':' '\n' | grep -q "^$HOME/.local/bin$"; then
     echo "Adding ~/.local/bin to PATH..."
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
-    echo "Reload your shell or run: source ~/.zshrc"
+
+    TARGET_SHELL="${SHELL##*/}"
+    if [ "$TARGET_SHELL" = "zsh" ]; then
+        PROFILE_FILE="$HOME/.zprofile"
+    elif [ "$TARGET_SHELL" = "bash" ]; then
+        PROFILE_FILE="$HOME/.bash_profile"
+    else
+        PROFILE_FILE="$HOME/.profile"
+    fi
+
+    if [ ! -f "$PROFILE_FILE" ] || ! grep -q "\.local/bin" "$PROFILE_FILE"; then
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE_FILE"
+    fi
+
+    echo "Added to $PROFILE_FILE"
+    echo "Reload your shell or run: source $PROFILE_FILE"
 fi
 
 # Copy app to Applications (optional)

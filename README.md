@@ -20,8 +20,9 @@ git clone https://github.com/marckrenn/pi-container.git ~/.pi-container
 mkdir -p ~/.local/bin
 ln -sf ~/.pi-container/pi ~/.local/bin/pi-container
 
-# Ensure PATH contains ~/.local/bin
-export PATH="$HOME/.local/bin:$PATH"
+# Ensure PATH contains ~/.local/bin (persist)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile
+source ~/.zprofile
 pi-container
 ```
 
