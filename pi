@@ -152,11 +152,11 @@ list_projects() {
 
 # Container helpers
 container_exists() {
-    container list --all 2>/dev/null | grep -q "$CONTAINER_NAME"
+    container inspect "$CONTAINER_NAME" 2>/dev/null | grep -q '"status"'
 }
 
 container_running() {
-    container list 2>/dev/null | grep -q "$CONTAINER_NAME"
+    container inspect "$CONTAINER_NAME" 2>/dev/null | grep -q '"status" *: *"running"'
 }
 
 container_uses_sleep() {
