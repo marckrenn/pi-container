@@ -28,14 +28,20 @@ LOCAL_CONFIG_DIR="$HOME/.pi/agent"
 AUTH_FILE="$LOCAL_CONFIG_DIR/auth.json"
 PROJECT_SKILLS_DIR="$SCRIPT_DIR/skills"
 HEADLESS_BROWSER=${PI_BROWSER:-0}
-BROWSER_TOOLS_DIR="/root/.pi/agent/skills/pi-skills/browser-tools"
-BROWSER_BOOTSTRAP_CMD="cd $BROWSER_TOOLS_DIR && if [ ! -d node_modules ]; then npm install --silent; fi; ./browser-start.js --headless --port 9222 || true"
 
 CONFIG_MODE="local"
 CONFIG_DIR_OVERRIDE=""
 PROFILE_NAME=""
 IMPORT_MODE=""
 CONFIG_DIR="$CONFIG_ROOT"
+
+PREFS_FILE="$BASE_PATH/.pi-container-prefs"
+CONTAINER_CONFIG_PATH="/home/pi/.pi/agent"
+CONTAINER_USER="pi"
+SSH_ENABLED=""
+
+BROWSER_TOOLS_DIR="$CONTAINER_CONFIG_PATH/skills/pi-skills/browser-tools"
+BROWSER_BOOTSTRAP_CMD="cd $BROWSER_TOOLS_DIR && if [ ! -d node_modules ]; then npm install --silent; fi; ./browser-start.js --headless --port 9222 || true"
 
 # Colors
 RED='\033[0;31m'
@@ -63,6 +69,49 @@ spinner() {
     printf "\r${GREEN}✓${NC} %s\n" "$msg"
 }
 
+# Preferences
+pref_get() {
+    [ -f "$PREFS_FILE" ] || return 1
+    grep -E "^$1=" "$PREFS_FILE" | tail -1 | cut -d= -f2-
+}
+
+pref_set() {
+    local key="$1"
+    local value="$2"
+    mkdir -p "$(dirname "$PREFS_FILE")" 2>/dev/null || true
+    grep -v -E "^${key}=" "$PREFS_FILE" 2>/dev/null > "${PREFS_FILE}.tmp" || true
+    echo "${key}=${value}" >> "${PREFS_FILE}.tmp"
+    mv "${PREFS_FILE}.tmp" "$PREFS_FILE"
+}
+
+pref_prompt() {
+    local key="$1"
+    local prompt="$2"
+    local default="$3"
+
+    local existing
+    existing=$(pref_get "$key" || true)
+    if [ -n "$existing" ]; then
+        echo "$existing"
+        return 0
+    fi
+
+    if [ -t 0 ] && [ -t 1 ]; then
+        read -p "$prompt" -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            pref_set "$key" "yes"
+            echo "yes"
+        else
+            pref_set "$key" "no"
+            echo "no"
+        fi
+    else
+        pref_set "$key" "$default"
+        echo "$default"
+    fi
+}
+
 # Print header
 header() {
     echo ""
@@ -85,10 +134,12 @@ show_help() {
     header
     echo -e "${BOLD}Usage:${NC}"
     echo "  pi-container                      Launch pi in /workspace"
-    echo "  pi-container                      Launch pi in /workspace"
     echo "  pi-container --project ${CYAN}<name>${NC}    Launch pi in project folder"
     echo "  pi-container project ${CYAN}<name>${NC}     Same as --project"
     echo "  pi-container --project ${CYAN}<name>${NC} --browser  Launch pi + headless browser"
+    echo "  pi-container --ssh                Enable SSH agent forwarding"
+    echo "  pi-container --no-ssh             Disable SSH forwarding"
+    echo "  pi-container shell --root         Root shell (for apt install)"
     echo "  pi-container projects             List all projects"
     echo "  pi-container shell                Open bash shell"
     echo "  pi-container status               Show container status"
@@ -120,11 +171,16 @@ show_help() {
     echo "  pi-container project list         List all projects"
     echo ""
     echo -e "${BOLD}Directories:${NC}"
-    echo "  ~/pi/workspace   →  /workspace        (your files)"
-    echo "  ~/pi/config      →  /root/.pi/agent   (pi config)"
+    echo "  ~/pi/workspace   →  /workspace          (your files)"
+    echo "  ~/pi/config      →  $CONTAINER_CONFIG_PATH   (pi config)"
     echo ""
     echo -e "${BOLD}Environment:${NC}"
     echo "  PI_CONTAINER_PATH   Override base path (default: ~/pi)"
+    echo "  PI_SSH              1/0 to enable/disable SSH forwarding"
+    echo "  PI_BROWSER          1/0 to enable/disable headless browser"
+    echo "  PI_NO_AUTO_INSTALL  1 to disable auto-install of container tool"
+    echo "  PI_NODE_IMAGE       Override base image (build arg)"
+    echo "  PI_AGENT_VERSION    Override pi version (build arg)"
     echo ""
     exit 0
 }
@@ -138,7 +194,7 @@ list_projects() {
     if [ ! -d "$WORKSPACE" ]; then
         echo -e "  ${DIM}(no projects yet)${NC}"
         echo ""
-        echo -e "Create one with: ${CYAN}pi-container myproject${NC}"
+        echo -e "Create one with: ${CYAN}pi-container --project myproject${NC}"
         echo ""
         exit 0
     fi
@@ -160,7 +216,7 @@ list_projects() {
     if [ $count -eq 0 ]; then
         echo -e "  ${DIM}(no projects yet)${NC}"
         echo ""
-        echo -e "Create one with: ${CYAN}pi-container myproject${NC}"
+        echo -e "Create one with: ${CYAN}pi-container --project myproject${NC}"
     fi
     echo ""
     exit 0
@@ -179,11 +235,34 @@ container_uses_sleep() {
     container inspect "$CONTAINER_NAME" 2>/dev/null | grep -q "sleep infinity"
 }
 
+container_has_ssh() {
+    container inspect "$CONTAINER_NAME" 2>/dev/null | grep -q "ssh-auth.sock"
+}
+
 ensure_container_compat() {
     if container_exists && ! container_uses_sleep; then
         echo -e "${YELLOW}Updating container entrypoint...${NC}"
         container stop "$CONTAINER_NAME" 2>/dev/null || true
         container delete "$CONTAINER_NAME" 2>/dev/null || true
+    fi
+
+    if container_exists && [ "$SSH_ENABLED" = "yes" ] && ! container_has_ssh; then
+        echo -e "${YELLOW}Recreating container to enable SSH forwarding...${NC}"
+        container stop "$CONTAINER_NAME" 2>/dev/null || true
+        container delete "$CONTAINER_NAME" 2>/dev/null || true
+    fi
+
+    if container_exists && [ "$SSH_ENABLED" = "no" ] && container_has_ssh; then
+        if [ -t 0 ] && [ -t 1 ]; then
+            echo ""
+            echo -e "${YELLOW}SSH forwarding is enabled in the existing container.${NC}"
+            read -p "Recreate container to disable SSH? (y/N) " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                container stop "$CONTAINER_NAME" 2>/dev/null || true
+                container delete "$CONTAINER_NAME" 2>/dev/null || true
+            fi
+        fi
     fi
 }
 
@@ -258,6 +337,18 @@ restart_container() {
     # Continue to run pi (don't exit)
 }
 
+# Build image helper (supports pinning)
+build_image() {
+    local args=()
+    if [ -n "${PI_NODE_IMAGE:-}" ]; then
+        args+=("--build-arg" "NODE_IMAGE=${PI_NODE_IMAGE}")
+    fi
+    if [ -n "${PI_AGENT_VERSION:-}" ]; then
+        args+=("--build-arg" "PI_VERSION=${PI_AGENT_VERSION}")
+    fi
+    container build "${args[@]}" -t "$IMAGE_NAME" "$SCRIPT_DIR"
+}
+
 # Rebuild image
 rebuild_image() {
     echo -e "${YELLOW}This will rebuild the image and delete the container.${NC}"
@@ -277,7 +368,7 @@ rebuild_image() {
         container image delete "$IMAGE_NAME" 2>/dev/null || true
         echo ""
         echo -e "${CYAN}Building image...${NC}"
-        container build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+        build_image
         echo ""
         echo -e "${GREEN}✓${NC} Image rebuilt"
     fi
@@ -299,9 +390,16 @@ install_container_tool() {
     echo ""
     echo -e "${YELLOW}Apple's container tool is not installed.${NC}"
     echo ""
-    read -p "Install it now? (Y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Nn]$ ]]; then
+
+    if [ "${PI_NO_AUTO_INSTALL:-0}" = "1" ]; then
+        echo -e "${DIM}Auto-install disabled (PI_NO_AUTO_INSTALL=1).${NC}"
+        echo -e "${DIM}Install manually: https://github.com/apple/container/releases${NC}"
+        exit 1
+    fi
+
+    local allow
+    allow=$(pref_prompt "auto_install_container" "Install Apple container tool now? (y/N) " "no")
+    if [ "$allow" != "yes" ]; then
         echo -e "${DIM}Install manually: https://github.com/apple/container/releases${NC}"
         exit 1
     fi
@@ -396,7 +494,7 @@ start_headless_browser_in_container() {
     [ "$CONTAINER_CMD" != "pi" ] && return
 
     # fire-and-forget; browser-start exits if already running
-    container exec -d "$CONTAINER_NAME" /bin/bash -lc "$BROWSER_BOOTSTRAP_CMD" >/dev/null 2>&1 || true
+    container exec -d ${USER_FLAG[@]} "$CONTAINER_NAME" /bin/bash -lc "$BROWSER_BOOTSTRAP_CMD" >/dev/null 2>&1 || true
 }
 
 # Handle commands
@@ -450,6 +548,18 @@ while [ $# -gt 0 ]; do
             ;;
         --no-browser)
             HEADLESS_BROWSER=0
+            shift
+            ;;
+        --ssh)
+            SSH_ENABLED="yes"
+            shift
+            ;;
+        --no-ssh)
+            SSH_ENABLED="no"
+            shift
+            ;;
+        --root)
+            CONTAINER_USER="root"
             shift
             ;;
         --project|-p)
@@ -521,6 +631,10 @@ fi
 
 set -- "${ARGS[@]}"
 
+if [ "$CONTAINER_USER" = "root" ] && [ "$CONTAINER_CMD" = "pi" ]; then
+    echo -e "${YELLOW}Warning:${NC} running pi as root. Config may use /root unless HOME is overridden."
+fi
+
 # Resolve config directory
 resolve_config_dir() {
     # Highest priority: explicit config dir
@@ -566,8 +680,27 @@ resolve_config_dir() {
 
 resolve_config_dir
 
+# Determine SSH forwarding preference
+if [ -z "$SSH_ENABLED" ]; then
+    if [ -n "${PI_SSH:-}" ]; then
+        if [ "${PI_SSH}" = "1" ] || [ "${PI_SSH}" = "true" ]; then
+            SSH_ENABLED="yes"
+        else
+            SSH_ENABLED="no"
+        fi
+    else
+        SSH_ENABLED=$(pref_prompt "ssh_forwarding" "Enable SSH agent forwarding into container? (y/N) " "no")
+    fi
+fi
+
 # Check macOS version
 check_macos_version
+
+USER_FLAG=(--user "$CONTAINER_USER")
+SSH_FLAG=()
+if [ "$SSH_ENABLED" = "yes" ]; then
+    SSH_FLAG=(--ssh)
+fi
 
 # Check if container tool is available
 if ! command -v container &> /dev/null; then
@@ -609,6 +742,17 @@ if [ "$CONFIG_DIR" != "$LOCAL_CONFIG_DIR" ]; then
                 fi
             fi
         fi
+
+        if [ "$MODE" = "force" ] && [ -t 0 ] && [ -t 1 ]; then
+            echo ""
+            echo -e "${YELLOW}This will overwrite:${NC} $CONFIG_DIR"
+            read -p "Proceed? (y/N) " -n 1 -r
+            echo ""
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                MODE="merge"
+            fi
+        fi
+
         import_local_config "$MODE"
         echo "yes" > "$IMPORT_MARKER" 2>/dev/null || true
     elif [ "$CONFIG_EMPTY" = true ] && [ ! -f "$IMPORT_MARKER" ]; then
@@ -654,7 +798,7 @@ fi
 if [ "$FIRST_RUN" = true ]; then
     echo -e "${CYAN}Building container image...${NC} ${DIM}(this takes a few minutes)${NC}"
     echo ""
-    container build -t "$IMAGE_NAME" "$SCRIPT_DIR" 2>&1 | while read line; do
+    build_image 2>&1 | while read line; do
         # Show only key progress lines
         if [[ "$line" =~ ^"#"[0-9]|"DONE"|"ERROR" ]]; then
             echo -e "${DIM}$line${NC}"
@@ -686,7 +830,7 @@ fi
 # Ensure image exists before running
 if ! image_exists; then
     echo -e "${CYAN}Image not found. Building...${NC}"
-    container build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+    build_image
 fi
 
 # Ensure container uses compatible entrypoint
@@ -703,6 +847,11 @@ if [ -t 0 ] && [ -t 1 ]; then
     TTY_FLAG="-t"
 fi
 
+EXEC_ENV=()
+if [ "$CONTAINER_USER" = "root" ] && [ "$CONTAINER_CMD" = "pi" ]; then
+    EXEC_ENV=(--env HOME=/home/pi)
+fi
+
 if container_exists; then
     if ! container_running; then
         echo -e "${DIM}Starting container...${NC}"
@@ -714,18 +863,19 @@ else
     container run -d \
         --name "$CONTAINER_NAME" \
         --volume "$WORKSPACE:/workspace" \
-        --volume "$CONFIG_DIR:/root/.pi/agent" \
+        --volume "$CONFIG_DIR:$CONTAINER_CONFIG_PATH" \
         -w "$WORKDIR" \
+        ${USER_FLAG[@]} \
         --cpus 4 \
         --memory 4G \
-        --ssh \
+        ${SSH_FLAG[@]} \
         "$IMAGE_NAME" \
         /bin/bash -lc "sleep infinity" >/dev/null
     wait_for_container_running
 fi
 
 start_headless_browser_in_container
-container exec -i $TTY_FLAG -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
+container exec -i $TTY_FLAG ${USER_FLAG[@]} ${EXEC_ENV[@]} -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
 EXIT_CODE=$?
 
 if [ "$CONTAINER_WAS_RUNNING" = false ]; then

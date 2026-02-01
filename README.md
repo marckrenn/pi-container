@@ -43,17 +43,20 @@ pi-container                          # Launch pi in /workspace
 pi-container --project <name>         # Launch pi in project folder
 pi-container project <name>           # Same as --project
 pi-container --project <name> --browser  # Launch pi + headless browser
-pi-container --config shared          # Share ~/.pi/agent (local pi)
-pi-container --config fresh           # New empty profile
-pi-container --import-config          # Copy ~/.pi/agent into config dir
-pi-container projects                 # List all projects
-pi-container shell                    # Open bash shell
-pi-container status                   # Show container status
-pi-container stop                     # Stop the container
-pi-container restart                  # Recreate container and launch pi
-pi-container reset                    # Delete container (keeps data)
-pi-container rebuild                  # Rebuild image from scratch
-pi-container help                     # Show help
+pi-container --ssh                     # Enable SSH forwarding
+pi-container --no-ssh                  # Disable SSH forwarding
+pi-container shell --root              # Root shell (for apt install)
+pi-container --config shared           # Share ~/.pi/agent (local pi)
+pi-container --config fresh            # New empty profile
+pi-container --import-config           # Copy ~/.pi/agent into config dir
+pi-container projects                  # List all projects
+pi-container shell                     # Open bash shell
+pi-container status                    # Show container status
+pi-container stop                      # Stop the container
+pi-container restart                   # Recreate container and launch pi
+pi-container reset                     # Delete container (keeps data)
+pi-container rebuild                   # Rebuild image from scratch
+pi-container help                      # Show help
 
 # Pi passthrough
 pi-container config                   # -> pi config
@@ -101,13 +104,18 @@ Projects are created automatically if they don't exist.
 
 ## Shell Access
 
-Open a bash shell for installing packages:
+By default, the container runs as **non‑root user `pi`**.
+
+Open a bash shell:
 
 ```bash
-pi-container shell
+pi-container shell          # runs as user "pi"
+
+# For root (apt install):
+pi-container shell --root
 
 # Inside container:
-apt install <package>       # System packages
+apt install <package>       # System packages (root only)
 npm install -g <package>    # Node packages  
 pip install <package>       # Python packages
 ```
@@ -126,8 +134,8 @@ pip install <package>       # Python packages
 | Host | Container |
 |------|-----------|
 | `~/pi/workspace` | `/workspace` |
-| `~/pi/config` | `/root/.pi/agent` (default config) |
-| `~/.pi/agent` | `/root/.pi/agent` (when `--config shared`) |
+| `~/pi/config` | `/home/pi/.pi/agent` (default config) |
+| `~/.pi/agent` | `/home/pi/.pi/agent` (when `--config shared`) |
 
 Both directories are **live mounts** — changes sync instantly.
 
@@ -176,7 +184,7 @@ Manual start (if needed):
 
 ```bash
 pi-container shell
-cd /root/.pi/agent/skills/pi-skills/browser-tools
+cd /home/pi/.pi/agent/skills/pi-skills/browser-tools
 npm install
 ./browser-start.js --headless
 ```
@@ -251,9 +259,42 @@ export PI_CONTAINER_PATH=/path/to/custom
 pi-container
 ```
 
+### SSH Forwarding
+
+On first run you’ll be asked whether to enable SSH agent forwarding. You can override:
+
+```bash
+PI_SSH=1 pi-container    # enable
+PI_SSH=0 pi-container    # disable
+```
+
+Preferences are stored in `~/pi/.pi-container-prefs`.
+
+### Auto-install Container Tool
+
+If Apple's `container` tool is missing, you’ll be prompted to install it. To disable auto-install:
+
+```bash
+PI_NO_AUTO_INSTALL=1 pi-container
+```
+
+### SSH Forwarding Prompt
+
+On first run you’ll be asked whether to enable SSH agent forwarding. Your choice is saved in `~/pi/.pi-container-prefs`.
+
 ### Project-local Skills
 
 This repo can include skills under `./skills/`. On startup, the script syncs them into the active config (unless `--config shared` is used).
+
+### Pin base image / pi version
+
+By default, latest is used. To pin:
+
+```bash
+export PI_NODE_IMAGE="node:22-bookworm@sha256:<digest>"
+export PI_AGENT_VERSION="0.9.1"   # example
+pi-container rebuild
+```
 
 ### Container Resources
 
