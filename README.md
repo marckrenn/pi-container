@@ -9,9 +9,9 @@ Run [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) in an iso
 
 ## Install
 
-**One-liner (user-local, no sudo):**
+**One-liner (user-local, persists PATH):**
 ```bash
-git clone https://github.com/marckrenn/pi-container.git ~/.pi-container && mkdir -p ~/.local/bin && ln -sf ~/.pi-container/pi ~/.local/bin/pi-container && export PATH="$HOME/.local/bin:$PATH" && pi-container
+git clone https://github.com/marckrenn/pi-container.git ~/.pi-container && mkdir -p ~/.local/bin && ln -sf ~/.pi-container/pi ~/.local/bin/pi-container && PROFILE="$HOME/.zprofile"; [ "${SHELL##*/}" = "bash" ] && PROFILE="$HOME/.bash_profile"; [ "${SHELL##*/}" = "sh" ] && PROFILE="$HOME/.profile"; grep -q "\.local/bin" "$PROFILE" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE"; source "$PROFILE"; pi-container
 ```
 
 **Or manual:**
