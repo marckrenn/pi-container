@@ -26,6 +26,9 @@ WORKSPACE="${BASE_PATH}/workspace"
 CONFIG="${BASE_PATH}/config"
 AUTH_FILE="${HOME}/.pi/agent/auth.json"
 PROJECT_SKILLS_DIR="$SCRIPT_DIR/skills"
+HEADLESS_BROWSER=${PI_HEADLESS:-1}
+BROWSER_TOOLS_DIR="/root/.pi/agent/skills/pi-skills/browser-tools"
+BROWSER_BOOTSTRAP_CMD="cd $BROWSER_TOOLS_DIR && if [ ! -d node_modules ]; then npm install --silent; fi; ./browser-start.js --headless --port 9222 || true"
 
 # Colors
 RED='\033[0;31m'
@@ -299,6 +302,15 @@ sync_project_skills() {
     fi
 }
 
+# Start headless Chromium inside container (if enabled)
+start_headless_browser_in_container() {
+    [ "$HEADLESS_BROWSER" = "0" ] && return
+    [ "$CONTAINER_CMD" != "pi" ] && return
+
+    # fire-and-forget; browser-start exits if already running
+    container exec -d "$CONTAINER_NAME" /bin/bash -lc "$BROWSER_BOOTSTRAP_CMD" >/dev/null 2>&1 || true
+}
+
 # Handle commands
 case "${1:-}" in
     help|--help|-h)
@@ -413,26 +425,43 @@ if container list --all 2>/dev/null | grep -q "$CONTAINER_NAME"; then
     if container list 2>/dev/null | grep -q "$CONTAINER_NAME"; then
         # Already running - exec into it
         [ "$CONTAINER_CMD" = "pi" ] && echo -e "${DIM}Attaching to running container...${NC}"
+        start_headless_browser_in_container
         exec container exec -it -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
     else
         # Exists but stopped - start then exec to set workdir
         echo -e "${DIM}Starting container...${NC}"
         container start "$CONTAINER_NAME" >/dev/null
+        start_headless_browser_in_container
         exec container exec -it -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
     fi
 else
     # Create new container
     [ "$CONTAINER_CMD" = "pi" ] && echo -e "${DIM}Creating container...${NC}"
-    
-    exec container run \
-        -it \
-        --name "$CONTAINER_NAME" \
-        --volume "$WORKSPACE:/workspace" \
-        --volume "$CONFIG:/root/.pi/agent" \
-        -w "$WORKDIR" \
-        --cpus 4 \
-        --memory 4G \
-        --ssh \
-        "$IMAGE_NAME" \
-        $CONTAINER_CMD "$@"
+
+    if [ "$CONTAINER_CMD" = "pi" ] && [ "$HEADLESS_BROWSER" != "0" ]; then
+        RUN_CMD="$BROWSER_BOOTSTRAP_CMD; exec pi \"\$@\""
+        exec container run \
+            -it \
+            --name "$CONTAINER_NAME" \
+            --volume "$WORKSPACE:/workspace" \
+            --volume "$CONFIG:/root/.pi/agent" \
+            -w "$WORKDIR" \
+            --cpus 4 \
+            --memory 4G \
+            --ssh \
+            "$IMAGE_NAME" \
+            /bin/bash -lc "$RUN_CMD" -- "$@"
+    else
+        exec container run \
+            -it \
+            --name "$CONTAINER_NAME" \
+            --volume "$WORKSPACE:/workspace" \
+            --volume "$CONFIG:/root/.pi/agent" \
+            -w "$WORKDIR" \
+            --cpus 4 \
+            --memory 4G \
+            --ssh \
+            "$IMAGE_NAME" \
+            $CONTAINER_CMD "$@"
+    fi
 fi

@@ -126,7 +126,14 @@ Then use Spotlight (`Cmd+Space` → "Pi Container") or add to Dock.
 
 The container includes **Chromium** for headless browser automation. A project-local copy of the `browser-tools` skill is included in this repo (so it doesn't modify your global skills).
 
-To use it inside the container:
+**By default, headless Chromium starts automatically** when you run `pi-container`.
+
+To disable:
+```bash
+PI_HEADLESS=0 pi-container
+```
+
+Manual start (if needed):
 
 ```bash
 pi-container shell
