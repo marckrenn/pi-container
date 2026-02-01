@@ -52,6 +52,9 @@ if ! echo "$PATH" | tr ':' '\n' | grep -q "^$HOME/.local/bin$"; then
     echo "Reload your shell or run: source $PROFILE_FILE"
 fi
 
+# Create default workspace/config dirs
+mkdir -p "$HOME/pi/workspace" "$HOME/pi/config"
+
 # Copy app to Applications (optional)
 if [ -d "$INSTALL_DIR/Pi Container.app" ]; then
     echo "Installing macOS app..."

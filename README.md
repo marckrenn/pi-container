@@ -34,7 +34,8 @@ curl -fsSL https://raw.githubusercontent.com/marckrenn/pi-container/main/install
 On first run, the script will:
 1. Install Apple's `container` tool (if needed)
 2. Build the Linux container image
-3. Create directories and launch pi
+3. Create `~/pi/workspace` and `~/pi/config` if missing
+4. Launch pi
 
 ## Usage
 
