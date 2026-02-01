@@ -11,14 +11,19 @@ Run [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) in an iso
 
 **One-liner:**
 ```bash
-git clone https://github.com/USER/pi-container.git ~/.pi-container && sudo ln -sf ~/.pi-container/pi /usr/local/bin/pi-container && pi-container
+git clone https://github.com/marckrenn/pi-container.git ~/.pi-container && sudo ln -sf ~/.pi-container/pi /usr/local/bin/pi-container && pi-container
 ```
 
 **Or manual:**
 ```bash
-git clone https://github.com/USER/pi-container.git ~/.pi-container
+git clone https://github.com/marckrenn/pi-container.git ~/.pi-container
 sudo ln -sf ~/.pi-container/pi /usr/local/bin/pi-container
 pi-container
+```
+
+**Or curl installer:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/marckrenn/pi-container/main/install.sh | bash
 ```
 
 On first run, the script will:

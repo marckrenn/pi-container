@@ -3,12 +3,12 @@
 # Pi Container Installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/USER/pi-container/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/marckrenn/pi-container/main/install.sh | bash
 #
 
 set -e
 
-REPO_URL="https://github.com/USER/pi-container.git"  # TODO: Update this
+REPO_URL="https://github.com/marckrenn/pi-container.git"
 INSTALL_DIR="$HOME/.pi-container"
 
 echo ""
