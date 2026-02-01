@@ -78,8 +78,10 @@ show_help() {
     header
     echo -e "${BOLD}Usage:${NC}"
     echo "  pi-container                      Launch pi in /workspace"
-    echo "  pi-container ${CYAN}<project>${NC}            Launch pi in project folder"
-    echo "  pi-container ${CYAN}<project>${NC} --browser  Launch pi + headless browser"
+    echo "  pi-container                      Launch pi in /workspace"
+    echo "  pi-container --project ${CYAN}<name>${NC}    Launch pi in project folder"
+    echo "  pi-container project ${CYAN}<name>${NC}     Same as --project"
+    echo "  pi-container --project ${CYAN}<name>${NC} --browser  Launch pi + headless browser"
     echo "  pi-container projects             List all projects"
     echo "  pi-container shell                Open bash shell"
     echo "  pi-container status               Show container status"
@@ -96,9 +98,10 @@ show_help() {
     echo "  pi-container -- --help            → pi --help"
     echo ""
     echo -e "${BOLD}Projects:${NC}"
-    echo "  pi-container myapp                Create/open ~/pi/workspace/myapp"
-    echo "  pi-container myapp --browser      Start headless browser too"
-    echo "  pi-container foo/bar              Nested folders work too"
+    echo "  pi-container --project myapp      Create/open ~/pi/workspace/myapp"
+    echo "  pi-container project myapp        Same as above"
+    echo "  pi-container --project myapp --browser  Start headless browser too"
+    echo "  pi-container project list         List all projects"
     echo ""
     echo -e "${BOLD}Directories:${NC}"
     echo "  ~/pi/workspace   →  /workspace        (your files)"
@@ -377,6 +380,11 @@ case "${1:-}" in
     projects|list)
         list_projects
         ;;
+    project)
+        if [ "${2:-}" = "list" ] || [ -z "${2:-}" ]; then
+            list_projects
+        fi
+        ;;
 esac
 
 # Determine command to run in container
@@ -384,24 +392,14 @@ CONTAINER_CMD="pi"
 WORKDIR="/workspace"
 PROJECT_NAME=""
 
-is_pi_subcommand() {
-    case "$1" in
-        config|install|help|version|models|providers|skills|tools|list|doctor|cache)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
 ARGS=()
-PASSTHRU=false
 while [ $# -gt 0 ]; do
     case "$1" in
         shell|sh|bash)
             CONTAINER_CMD="/bin/bash"
             shift
+            ARGS+=("$@")
+            break
             ;;
         --browser)
             HEADLESS_BROWSER=1
@@ -411,15 +409,13 @@ while [ $# -gt 0 ]; do
             HEADLESS_BROWSER=0
             shift
             ;;
+        --project|-p)
+            PROJECT_NAME="$2"
+            shift 2
+            ;;
         project)
             shift
             PROJECT_NAME="$1"
-            WORKDIR="/workspace/$PROJECT_NAME"
-            shift
-            ;;
-        pi)
-            # Explicit pass-through to pi
-            PASSTHRU=true
             shift
             ;;
         --)
@@ -427,36 +423,18 @@ while [ $# -gt 0 ]; do
             ARGS+=("$@")
             break
             ;;
-        -* )
-            PASSTHRU=true
+        *)
             ARGS+=("$1")
             shift
             ;;
-        *)
-            if [ -z "$PROJECT_NAME" ] && [ "$CONTAINER_CMD" = "pi" ] && [ "$PASSTHRU" = false ]; then
-                if is_pi_subcommand "$1"; then
-                    PASSTHRU=true
-                    ARGS+=("$1")
-                    shift
-                else
-                    PROJECT_NAME="$1"
-                    WORKDIR="/workspace/$PROJECT_NAME"
-                    shift
-                fi
-            else
-                ARGS+=("$1")
-                shift
-            fi
-            ;;
     esac
 
-    # Don't treat args after shell as project names
-    if [ "$CONTAINER_CMD" = "/bin/bash" ]; then
-        ARGS+=("$@")
-        break
-    fi
-
 done
+
+if [ -n "$PROJECT_NAME" ]; then
+    WORKDIR="/workspace/$PROJECT_NAME"
+fi
+
 set -- "${ARGS[@]}"
 
 # Check macOS version

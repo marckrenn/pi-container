@@ -39,23 +39,24 @@ On first run, the script will:
 ## Usage
 
 ```bash
-pi-container                  # Launch pi in /workspace
-pi-container <project>        # Launch pi in project folder
-pi-container <project> --browser  # Launch pi + headless browser
-pi-container projects         # List all projects
-pi-container shell            # Open bash shell
-pi-container status           # Show container status
-pi-container stop             # Stop the container
-pi-container restart          # Recreate container and launch pi
-pi-container reset            # Delete container (keeps data)
-pi-container rebuild          # Rebuild image from scratch
-pi-container help             # Show help
+pi-container                          # Launch pi in /workspace
+pi-container --project <name>         # Launch pi in project folder
+pi-container project <name>           # Same as --project
+pi-container --project <name> --browser  # Launch pi + headless browser
+pi-container projects                 # List all projects
+pi-container shell                    # Open bash shell
+pi-container status                   # Show container status
+pi-container stop                     # Stop the container
+pi-container restart                  # Recreate container and launch pi
+pi-container reset                    # Delete container (keeps data)
+pi-container rebuild                  # Rebuild image from scratch
+pi-container help                     # Show help
 
 # Pi passthrough
-pi-container config           # -> pi config
-pi-container install npm:pkg  # -> pi install npm:pkg
-pi-container pi --help        # -> pi --help
-pi-container -- --help        # -> pi --help
+pi-container config                   # -> pi config
+pi-container install npm:pkg          # -> pi install npm:pkg
+pi-container pi --help                # -> pi --help
+pi-container -- --help                # -> pi --help
 ```
 
 ## Projects
@@ -63,15 +64,15 @@ pi-container -- --help        # -> pi --help
 Work on different projects in isolated folders:
 
 ```bash
-pi-container myapp            # Opens ~/pi/workspace/myapp
-pi-container myapp --browser  # Start browser too
-pi-container api-server       # Opens ~/pi/workspace/api-server
-pi-container client/frontend  # Nested folders work too
+pi-container --project myapp         # Opens ~/pi/workspace/myapp
+pi-container --project myapp --browser  # Start browser too
+pi-container project api-server      # Same as --project
+pi-container project list            # List projects
 ```
 
 ### Pi passthrough
 
-You can call pi subcommands directly:
+You can call pi subcommands directly (no hardcoded list):
 
 ```bash
 pi-container config
