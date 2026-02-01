@@ -154,7 +154,7 @@ show_status() {
     fi
     echo ""
     echo -e "${BOLD}Image:${NC}"
-    if container image list 2>/dev/null | grep -q "pi-agent"; then
+    if image_exists; then
         echo -e "  ${GREEN}✓${NC} $IMAGE_NAME"
     else
         echo -e "  ${DIM}not built${NC}"
@@ -387,9 +387,14 @@ fi
 # Sync project-local skills (if any)
 sync_project_skills
 
+# Check if image exists
+image_exists() {
+    container image inspect "$IMAGE_NAME" >/dev/null 2>&1
+}
+
 # Check if this is first run (no image exists)
 FIRST_RUN=false
-if ! container image list 2>/dev/null | grep -q "pi-agent"; then
+if ! image_exists; then
     FIRST_RUN=true
     first_run_welcome
 fi
@@ -425,6 +430,12 @@ if [ "$CONTAINER_CMD" = "pi" ]; then
         status_info
     fi
     echo ""
+fi
+
+# Ensure image exists before running
+if ! image_exists; then
+    echo -e "${CYAN}Image not found. Building...${NC}"
+    container build -t "$IMAGE_NAME" "$SCRIPT_DIR"
 fi
 
 # Run in container
