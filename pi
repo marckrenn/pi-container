@@ -26,7 +26,7 @@ WORKSPACE="${BASE_PATH}/workspace"
 CONFIG="${BASE_PATH}/config"
 AUTH_FILE="${HOME}/.pi/agent/auth.json"
 PROJECT_SKILLS_DIR="$SCRIPT_DIR/skills"
-HEADLESS_BROWSER=${PI_HEADLESS:-1}
+HEADLESS_BROWSER=${PI_BROWSER:-0}
 BROWSER_TOOLS_DIR="/root/.pi/agent/skills/pi-skills/browser-tools"
 BROWSER_BOOTSTRAP_CMD="cd $BROWSER_TOOLS_DIR && if [ ! -d node_modules ]; then npm install --silent; fi; ./browser-start.js --headless --port 9222 || true"
 
@@ -79,6 +79,7 @@ show_help() {
     echo -e "${BOLD}Usage:${NC}"
     echo "  pi-container                      Launch pi in /workspace"
     echo "  pi-container ${CYAN}<project>${NC}            Launch pi in project folder"
+    echo "  pi-container ${CYAN}<project>${NC} --browser  Launch pi + headless browser"
     echo "  pi-container projects             List all projects"
     echo "  pi-container shell                Open bash shell"
     echo "  pi-container status               Show container status"
@@ -88,8 +89,15 @@ show_help() {
     echo "  pi-container rebuild              Rebuild image"
     echo "  pi-container help                 Show this help"
     echo ""
+    echo -e "${BOLD}Pi passthrough:${NC}"
+    echo "  pi-container config               → pi config"
+    echo "  pi-container install npm:pkg      → pi install npm:pkg"
+    echo "  pi-container pi --help            → pi --help"
+    echo "  pi-container -- --help            → pi --help"
+    echo ""
     echo -e "${BOLD}Projects:${NC}"
     echo "  pi-container myapp                Create/open ~/pi/workspace/myapp"
+    echo "  pi-container myapp --browser      Start headless browser too"
     echo "  pi-container foo/bar              Nested folders work too"
     echo ""
     echo -e "${BOLD}Directories:${NC}"
@@ -376,15 +384,80 @@ CONTAINER_CMD="pi"
 WORKDIR="/workspace"
 PROJECT_NAME=""
 
-if [ "$1" = "shell" ] || [ "$1" = "sh" ] || [ "$1" = "bash" ]; then
-    CONTAINER_CMD="/bin/bash"
-    shift
-elif [ -n "$1" ] && [ "$1" != "shell" ]; then
-    # Treat first argument as project name
-    PROJECT_NAME="$1"
-    WORKDIR="/workspace/$PROJECT_NAME"
-    shift
-fi
+is_pi_subcommand() {
+    case "$1" in
+        config|install|help|version|models|providers|skills|tools|list|doctor|cache)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+ARGS=()
+PASSTHRU=false
+while [ $# -gt 0 ]; do
+    case "$1" in
+        shell|sh|bash)
+            CONTAINER_CMD="/bin/bash"
+            shift
+            ;;
+        --browser)
+            HEADLESS_BROWSER=1
+            shift
+            ;;
+        --no-browser)
+            HEADLESS_BROWSER=0
+            shift
+            ;;
+        project)
+            shift
+            PROJECT_NAME="$1"
+            WORKDIR="/workspace/$PROJECT_NAME"
+            shift
+            ;;
+        pi)
+            # Explicit pass-through to pi
+            PASSTHRU=true
+            shift
+            ;;
+        --)
+            shift
+            ARGS+=("$@")
+            break
+            ;;
+        -* )
+            PASSTHRU=true
+            ARGS+=("$1")
+            shift
+            ;;
+        *)
+            if [ -z "$PROJECT_NAME" ] && [ "$CONTAINER_CMD" = "pi" ] && [ "$PASSTHRU" = false ]; then
+                if is_pi_subcommand "$1"; then
+                    PASSTHRU=true
+                    ARGS+=("$1")
+                    shift
+                else
+                    PROJECT_NAME="$1"
+                    WORKDIR="/workspace/$PROJECT_NAME"
+                    shift
+                fi
+            else
+                ARGS+=("$1")
+                shift
+            fi
+            ;;
+    esac
+
+    # Don't treat args after shell as project names
+    if [ "$CONTAINER_CMD" = "/bin/bash" ]; then
+        ARGS+=("$@")
+        break
+    fi
+
+done
+set -- "${ARGS[@]}"
 
 # Check macOS version
 check_macos_version

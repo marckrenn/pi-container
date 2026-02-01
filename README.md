@@ -41,6 +41,7 @@ On first run, the script will:
 ```bash
 pi-container                  # Launch pi in /workspace
 pi-container <project>        # Launch pi in project folder
+pi-container <project> --browser  # Launch pi + headless browser
 pi-container projects         # List all projects
 pi-container shell            # Open bash shell
 pi-container status           # Show container status
@@ -49,6 +50,12 @@ pi-container restart          # Recreate container and launch pi
 pi-container reset            # Delete container (keeps data)
 pi-container rebuild          # Rebuild image from scratch
 pi-container help             # Show help
+
+# Pi passthrough
+pi-container config           # -> pi config
+pi-container install npm:pkg  # -> pi install npm:pkg
+pi-container pi --help        # -> pi --help
+pi-container -- --help        # -> pi --help
 ```
 
 ## Projects
@@ -57,8 +64,19 @@ Work on different projects in isolated folders:
 
 ```bash
 pi-container myapp            # Opens ~/pi/workspace/myapp
+pi-container myapp --browser  # Start browser too
 pi-container api-server       # Opens ~/pi/workspace/api-server
 pi-container client/frontend  # Nested folders work too
+```
+
+### Pi passthrough
+
+You can call pi subcommands directly:
+
+```bash
+pi-container config
+pi-container install npm:pkg
+pi-container -- --help
 ```
 
 List all projects:
@@ -136,11 +154,17 @@ Then use Spotlight (`Cmd+Space` → "Pi Container") or add to Dock.
 
 The container includes **Chromium** for headless browser automation. A project-local copy of the `browser-tools` skill is included in this repo (so it doesn't modify your global skills).
 
-**By default, headless Chromium starts automatically** when you run `pi-container`.
+Headless Chromium is **disabled by default**.
 
-To disable:
+Start it explicitly:
 ```bash
-PI_HEADLESS=0 pi-container
+pi-container --browser
+pi-container myapp --browser
+```
+
+Or with env:
+```bash
+PI_BROWSER=1 pi-container
 ```
 
 Manual start (if needed):
