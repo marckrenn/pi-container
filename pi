@@ -23,12 +23,19 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
 
 WORKSPACE="${BASE_PATH}/workspace"
-CONFIG="${BASE_PATH}/config"
-AUTH_FILE="${HOME}/.pi/agent/auth.json"
+CONFIG_ROOT="${BASE_PATH}/config"
+LOCAL_CONFIG_DIR="$HOME/.pi/agent"
+AUTH_FILE="$LOCAL_CONFIG_DIR/auth.json"
 PROJECT_SKILLS_DIR="$SCRIPT_DIR/skills"
 HEADLESS_BROWSER=${PI_BROWSER:-0}
 BROWSER_TOOLS_DIR="/root/.pi/agent/skills/pi-skills/browser-tools"
 BROWSER_BOOTSTRAP_CMD="cd $BROWSER_TOOLS_DIR && if [ ! -d node_modules ]; then npm install --silent; fi; ./browser-start.js --headless --port 9222 || true"
+
+CONFIG_MODE="local"
+CONFIG_DIR_OVERRIDE=""
+PROFILE_NAME=""
+IMPORT_CONFIG=false
+CONFIG_DIR="$CONFIG_ROOT"
 
 # Colors
 RED='\033[0;31m'
@@ -69,7 +76,7 @@ header() {
 # Print status info
 status_info() {
     echo -e "${DIM}Workspace:${NC} $WORKSPACE"
-    echo -e "${DIM}Config:${NC}    $CONFIG"
+    echo -e "${DIM}Config:${NC}    $CONFIG_DIR"
     echo ""
 }
 
@@ -90,6 +97,14 @@ show_help() {
     echo "  pi-container reset                Delete container (keeps data)"
     echo "  pi-container rebuild              Rebuild image"
     echo "  pi-container help                 Show this help"
+    echo ""
+    echo -e "${BOLD}Config modes:${NC}"
+    echo "  --config local        Use ~/pi/config (default)"
+    echo "  --config shared       Share ~/.pi/agent (local pi)"
+    echo "  --config project      Use ~/pi/config/projects/<project>"
+    echo "  --config fresh        New profile under ~/pi/config/profiles"
+    echo "  --profile <name>      Use ~/pi/config/profiles/<name>"
+    echo "  --import-config       Copy ~/.pi/agent into config dir"
     echo ""
     echo -e "${BOLD}Pi passthrough:${NC}"
     echo "  pi-container config               → pi config"
@@ -200,7 +215,7 @@ show_status() {
     echo ""
     echo -e "${BOLD}Directories:${NC}"
     echo "  ~/pi/workspace   $([ -d "$WORKSPACE" ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}(will be created)${NC}")"
-    echo "  ~/pi/config      $([ -d "$CONFIG" ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}(will be created)${NC}")"
+    echo "  $CONFIG_DIR   $([ -d "$CONFIG_DIR" ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}(will be created)${NC}")"
     echo ""
     exit 0
 }
@@ -341,10 +356,30 @@ first_run_welcome() {
 
 # Sync project-local skills into config
 sync_project_skills() {
-    if [ -d "$PROJECT_SKILLS_DIR" ]; then
-        mkdir -p "$CONFIG/skills"
-        rsync -a "$PROJECT_SKILLS_DIR/" "$CONFIG/skills/"
+    # Skip if we're sharing local config to avoid mutating host pi
+    if [ "$CONFIG_DIR" = "$LOCAL_CONFIG_DIR" ]; then
+        return
     fi
+    if [ -d "$PROJECT_SKILLS_DIR" ]; then
+        mkdir -p "$CONFIG_DIR/skills"
+        rsync -a "$PROJECT_SKILLS_DIR/" "$CONFIG_DIR/skills/"
+    fi
+}
+
+# Import local pi config into target config dir
+import_local_config() {
+    if [ ! -d "$LOCAL_CONFIG_DIR" ]; then
+        return
+    fi
+    if [ "$CONFIG_DIR" = "$LOCAL_CONFIG_DIR" ]; then
+        return
+    fi
+    mkdir -p "$CONFIG_DIR"
+    rsync -a \
+        --exclude 'skills/' \
+        --exclude 'cache/' \
+        --exclude 'logs/' \
+        "$LOCAL_CONFIG_DIR/" "$CONFIG_DIR/"
 }
 
 # Start headless Chromium inside container (if enabled)
@@ -418,6 +453,30 @@ while [ $# -gt 0 ]; do
             PROJECT_NAME="$1"
             shift
             ;;
+        --config)
+            CONFIG_MODE="$2"
+            shift 2
+            ;;
+        --config=*)
+            CONFIG_MODE="${1#--config=}"
+            shift
+            ;;
+        --config-dir)
+            CONFIG_DIR_OVERRIDE="$2"
+            shift 2
+            ;;
+        --profile)
+            PROFILE_NAME="$2"
+            shift 2
+            ;;
+        --import-config)
+            IMPORT_CONFIG=true
+            shift
+            ;;
+        --fresh)
+            CONFIG_MODE="fresh"
+            shift
+            ;;
         --)
             shift
             ARGS+=("$@")
@@ -437,6 +496,51 @@ fi
 
 set -- "${ARGS[@]}"
 
+# Resolve config directory
+resolve_config_dir() {
+    # Highest priority: explicit config dir
+    if [ -n "$CONFIG_DIR_OVERRIDE" ]; then
+        CONFIG_DIR="$CONFIG_DIR_OVERRIDE"
+        return
+    fi
+
+    # Shared config (link to local pi)
+    if [ "$CONFIG_MODE" = "shared" ]; then
+        CONFIG_DIR="$LOCAL_CONFIG_DIR"
+        return
+    fi
+
+    # Project config
+    if [ "$CONFIG_MODE" = "project" ]; then
+        if [ -z "$PROJECT_NAME" ]; then
+            echo -e "${RED}Error:${NC} --config project requires --project <name>"
+            exit 1
+        fi
+        CONFIG_DIR="$CONFIG_ROOT/projects/$PROJECT_NAME"
+        return
+    fi
+
+    # Fresh profile
+    if [ "$CONFIG_MODE" = "fresh" ]; then
+        if [ -z "$PROFILE_NAME" ]; then
+            PROFILE_NAME="fresh-$(date +%Y%m%d%H%M%S)"
+        fi
+        CONFIG_DIR="$CONFIG_ROOT/profiles/$PROFILE_NAME"
+        return
+    fi
+
+    # Named profile
+    if [ -n "$PROFILE_NAME" ]; then
+        CONFIG_DIR="$CONFIG_ROOT/profiles/$PROFILE_NAME"
+        return
+    fi
+
+    # Default
+    CONFIG_DIR="$CONFIG_ROOT"
+}
+
+resolve_config_dir
+
 # Check macOS version
 check_macos_version
 
@@ -453,12 +557,32 @@ if ! container list &>/dev/null; then
 fi
 
 # Ensure directories exist
-mkdir -p "$WORKSPACE" "$CONFIG"
+mkdir -p "$WORKSPACE"
+if [ "$CONFIG_DIR" != "$LOCAL_CONFIG_DIR" ]; then
+    mkdir -p "$CONFIG_DIR"
+fi
+
+# Import local config (one-time or on demand)
+if [ "$CONFIG_DIR" != "$LOCAL_CONFIG_DIR" ]; then
+    IMPORT_MARKER="$CONFIG_DIR/.imported-from-local"
+    CONFIG_EMPTY=true
+    if [ -d "$CONFIG_DIR" ] && [ "$(ls -A "$CONFIG_DIR" 2>/dev/null)" ]; then
+        CONFIG_EMPTY=false
+    fi
+
+    if [ "$IMPORT_CONFIG" = true ]; then
+        import_local_config
+        touch "$IMPORT_MARKER" 2>/dev/null || true
+    elif [ "$CONFIG_EMPTY" = true ] && [ ! -f "$IMPORT_MARKER" ]; then
+        import_local_config
+        touch "$IMPORT_MARKER" 2>/dev/null || true
+    fi
+fi
 
 # Copy auth.json if it exists and is newer (or doesn't exist in config)
-if [ -f "$AUTH_FILE" ]; then
-    if [ ! -f "$CONFIG/auth.json" ] || [ "$AUTH_FILE" -nt "$CONFIG/auth.json" ]; then
-        cp "$AUTH_FILE" "$CONFIG/auth.json"
+if [ "$CONFIG_DIR" != "$LOCAL_CONFIG_DIR" ] && [ -f "$AUTH_FILE" ]; then
+    if [ ! -f "$CONFIG_DIR/auth.json" ] || [ "$AUTH_FILE" -nt "$CONFIG_DIR/auth.json" ]; then
+        cp "$AUTH_FILE" "$CONFIG_DIR/auth.json"
     fi
 fi
 
@@ -503,7 +627,7 @@ if [ "$CONTAINER_CMD" = "pi" ]; then
     if [ -n "$PROJECT_NAME" ]; then
         echo -e "${DIM}Project:${NC}   ${BOLD}$PROJECT_NAME${NC}"
         echo -e "${DIM}Path:${NC}      $WORKSPACE/$PROJECT_NAME"
-        echo -e "${DIM}Config:${NC}    $CONFIG"
+        echo -e "${DIM}Config:${NC}    $CONFIG_DIR"
     else
         status_info
     fi
@@ -541,7 +665,7 @@ else
     container run -d \
         --name "$CONTAINER_NAME" \
         --volume "$WORKSPACE:/workspace" \
-        --volume "$CONFIG:/root/.pi/agent" \
+        --volume "$CONFIG_DIR:/root/.pi/agent" \
         -w "$WORKDIR" \
         --cpus 4 \
         --memory 4G \

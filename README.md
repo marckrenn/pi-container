@@ -43,6 +43,9 @@ pi-container                          # Launch pi in /workspace
 pi-container --project <name>         # Launch pi in project folder
 pi-container project <name>           # Same as --project
 pi-container --project <name> --browser  # Launch pi + headless browser
+pi-container --config shared          # Share ~/.pi/agent (local pi)
+pi-container --config fresh           # New empty profile
+pi-container --import-config          # Copy ~/.pi/agent into config dir
 pi-container projects                 # List all projects
 pi-container shell                    # Open bash shell
 pi-container status                   # Show container status
@@ -123,7 +126,8 @@ pip install <package>       # Python packages
 | Host | Container |
 |------|-----------|
 | `~/pi/workspace` | `/workspace` |
-| `~/pi/config` | `/root/.pi/agent` |
+| `~/pi/config` | `/root/.pi/agent` (default config) |
+| `~/.pi/agent` | `/root/.pi/agent` (when `--config shared`) |
 
 Both directories are **live mounts** — changes sync instantly.
 
@@ -196,6 +200,45 @@ export CHROME_DIR=/path/to/profile
 
 ## Configuration
 
+### Config modes
+
+**Default (local container config):**
+```bash
+pi-container                 # uses ~/pi/config
+```
+
+**Shared with local pi (permanent link):**
+```bash
+pi-container --config shared # uses ~/.pi/agent directly
+```
+
+**Import local config (global):**
+```bash
+pi-container --import-config
+```
+
+> On first run, if `~/pi/config` is empty, it auto‑imports once from `~/.pi/agent`.
+
+**Project-specific config:**
+```bash
+pi-container --project myapp --config project
+```
+
+**Import local config as project starting point:**
+```bash
+pi-container --project myapp --config project --import-config
+```
+
+**Fresh profile (new empty config):**
+```bash
+pi-container --config fresh
+```
+
+**Named profile:**
+```bash
+pi-container --profile demo
+```
+
 ### Custom Base Path
 
 ```bash
@@ -205,7 +248,7 @@ pi-container
 
 ### Project-local Skills
 
-This repo can include skills under `./skills/`. On startup, the script syncs them into `~/pi/config/skills` so they apply **only to this container**.
+This repo can include skills under `./skills/`. On startup, the script syncs them into the active config (unless `--config shared` is used).
 
 ### Container Resources
 
