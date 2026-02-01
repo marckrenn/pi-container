@@ -26,9 +26,17 @@ else
     cd "$INSTALL_DIR"
 fi
 
-# Create symlink
+# Create symlink (user-local)
 echo "Creating symlink..."
-sudo ln -sf "$INSTALL_DIR/pi" /usr/local/bin/pi-container
+mkdir -p "$HOME/.local/bin"
+ln -sf "$INSTALL_DIR/pi" "$HOME/.local/bin/pi-container"
+
+# Ensure PATH includes ~/.local/bin
+if ! echo "$PATH" | tr ':' '\n' | grep -q "^$HOME/.local/bin$"; then
+    echo "Adding ~/.local/bin to PATH..."
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+    echo "Reload your shell or run: source ~/.zshrc"
+fi
 
 # Copy app to Applications (optional)
 if [ -d "$INSTALL_DIR/Pi Container.app" ]; then
