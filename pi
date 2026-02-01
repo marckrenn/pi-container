@@ -1,0 +1,438 @@
+#!/bin/bash
+#
+# Pi Coding Agent - Container Entrypoint
+#
+# Run pi-coding-agent inside an Apple container.
+# Designed to be used as a Terminal.app/Ghostty command.
+#
+
+set -e
+
+# Configuration
+IMAGE_NAME="pi-agent:latest"
+CONTAINER_NAME="pi-agent"
+BASE_PATH="${PI_CONTAINER_PATH:-$HOME/pi}"
+
+# Resolve symlink to get actual script directory
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_PATH" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    [[ $SCRIPT_PATH != /* ]] && SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+WORKSPACE="${BASE_PATH}/workspace"
+CONFIG="${BASE_PATH}/config"
+AUTH_FILE="${HOME}/.pi/agent/auth.json"
+PROJECT_SKILLS_DIR="$SCRIPT_DIR/skills"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+DIM='\033[2m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Spinner for long operations
+spinner() {
+    local pid=$1
+    local msg=$2
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    tput civis  # hide cursor
+    while kill -0 $pid 2>/dev/null; do
+        printf "\r${CYAN}${spin:$i:1}${NC} %s" "$msg"
+        i=$(((i + 1) % ${#spin}))
+        sleep 0.1
+    done
+    tput cnorm  # show cursor
+    printf "\r${GREEN}✓${NC} %s\n" "$msg"
+}
+
+# Print header
+header() {
+    echo ""
+    echo -e "${BOLD}${BLUE}┌────────────────────────────────┐${NC}"
+    echo -e "${BOLD}${BLUE}│${NC}        ${BOLD}Pi Coding Agent${NC}         ${BOLD}${BLUE}│${NC}"
+    echo -e "${BOLD}${BLUE}│${NC}    ${DIM}Isolated Linux Container${NC}    ${BOLD}${BLUE}│${NC}"
+    echo -e "${BOLD}${BLUE}└────────────────────────────────┘${NC}"
+    echo ""
+}
+
+# Print status info
+status_info() {
+    echo -e "${DIM}Workspace:${NC} $WORKSPACE"
+    echo -e "${DIM}Config:${NC}    $CONFIG"
+    echo ""
+}
+
+# Show help
+show_help() {
+    header
+    echo -e "${BOLD}Usage:${NC}"
+    echo "  pi-container                      Launch pi in /workspace"
+    echo "  pi-container ${CYAN}<project>${NC}            Launch pi in project folder"
+    echo "  pi-container projects             List all projects"
+    echo "  pi-container shell                Open bash shell"
+    echo "  pi-container status               Show container status"
+    echo "  pi-container stop                 Stop the container"
+    echo "  pi-container restart              Recreate container and launch pi"
+    echo "  pi-container reset                Delete container (keeps data)"
+    echo "  pi-container rebuild              Rebuild image"
+    echo "  pi-container help                 Show this help"
+    echo ""
+    echo -e "${BOLD}Projects:${NC}"
+    echo "  pi-container myapp                Create/open ~/pi/workspace/myapp"
+    echo "  pi-container foo/bar              Nested folders work too"
+    echo ""
+    echo -e "${BOLD}Directories:${NC}"
+    echo "  ~/pi/workspace   →  /workspace        (your files)"
+    echo "  ~/pi/config      →  /root/.pi/agent   (pi config)"
+    echo ""
+    echo -e "${BOLD}Environment:${NC}"
+    echo "  PI_CONTAINER_PATH   Override base path (default: ~/pi)"
+    echo ""
+    exit 0
+}
+
+# List projects
+list_projects() {
+    header
+    echo -e "${BOLD}Projects in ~/pi/workspace:${NC}"
+    echo ""
+    
+    if [ ! -d "$WORKSPACE" ]; then
+        echo -e "  ${DIM}(no projects yet)${NC}"
+        echo ""
+        echo -e "Create one with: ${CYAN}pi-container myproject${NC}"
+        echo ""
+        exit 0
+    fi
+    
+    # Find directories, excluding hidden ones
+    local count=0
+    while IFS= read -r dir; do
+        if [ -n "$dir" ]; then
+            local name="${dir#$WORKSPACE/}"
+            local files=$(find "$dir" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
+            local subdirs=$(find "$dir" -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+            subdirs=$((subdirs - 1))  # exclude the dir itself
+            echo -e "  ${GREEN}●${NC} ${BOLD}$name${NC}"
+            echo -e "    ${DIM}$files files, $subdirs folders${NC}"
+            count=$((count + 1))
+        fi
+    done < <(find "$WORKSPACE" -mindepth 1 -maxdepth 1 -type d ! -name ".*" | sort)
+    
+    if [ $count -eq 0 ]; then
+        echo -e "  ${DIM}(no projects yet)${NC}"
+        echo ""
+        echo -e "Create one with: ${CYAN}pi-container myproject${NC}"
+    fi
+    echo ""
+    exit 0
+}
+
+# Show status
+show_status() {
+    header
+    echo -e "${BOLD}Container:${NC}"
+    if container list --all 2>/dev/null | grep -q "$CONTAINER_NAME"; then
+        if container list 2>/dev/null | grep -q "$CONTAINER_NAME"; then
+            echo -e "  State: ${GREEN}● running${NC}"
+        else
+            echo -e "  State: ${YELLOW}○ stopped${NC}"
+        fi
+    else
+        echo -e "  State: ${DIM}not created${NC}"
+    fi
+    echo ""
+    echo -e "${BOLD}Image:${NC}"
+    if container image list 2>/dev/null | grep -q "pi-agent"; then
+        echo -e "  ${GREEN}✓${NC} $IMAGE_NAME"
+    else
+        echo -e "  ${DIM}not built${NC}"
+    fi
+    echo ""
+    echo -e "${BOLD}Directories:${NC}"
+    echo "  ~/pi/workspace   $([ -d "$WORKSPACE" ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}(will be created)${NC}")"
+    echo "  ~/pi/config      $([ -d "$CONFIG" ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}(will be created)${NC}")"
+    echo ""
+    exit 0
+}
+
+# Stop container
+stop_container() {
+    if container list 2>/dev/null | grep -q "$CONTAINER_NAME"; then
+        echo -e "${YELLOW}Stopping container...${NC}"
+        container stop "$CONTAINER_NAME"
+        echo -e "${GREEN}✓${NC} Container stopped"
+    else
+        echo -e "${DIM}Container is not running${NC}"
+    fi
+    exit 0
+}
+
+# Reset container
+reset_container() {
+    echo -e "${YELLOW}This will delete the container.${NC}"
+    echo -e "${DIM}Your files in ~/pi will NOT be deleted.${NC}"
+    echo ""
+    read -p "Continue? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        container stop "$CONTAINER_NAME" 2>/dev/null || true
+        container delete "$CONTAINER_NAME" 2>/dev/null || true
+        echo -e "${GREEN}✓${NC} Container deleted"
+    fi
+    exit 0
+}
+
+# Restart container (recreate with fresh mounts)
+restart_container() {
+    echo -e "${CYAN}Restarting container...${NC}"
+    container stop "$CONTAINER_NAME" 2>/dev/null || true
+    container delete "$CONTAINER_NAME" 2>/dev/null || true
+    echo -e "${GREEN}✓${NC} Container removed, will recreate on next run"
+    echo ""
+    # Continue to run pi (don't exit)
+}
+
+# Rebuild image
+rebuild_image() {
+    echo -e "${YELLOW}This will rebuild the image and delete the container.${NC}"
+    echo ""
+    read -p "Continue? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        container stop "$CONTAINER_NAME" 2>/dev/null || true
+        container delete "$CONTAINER_NAME" 2>/dev/null || true
+        container image delete "$IMAGE_NAME" 2>/dev/null || true
+        echo ""
+        echo -e "${CYAN}Building image...${NC}"
+        container build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+        echo ""
+        echo -e "${GREEN}✓${NC} Image rebuilt"
+    fi
+    exit 0
+}
+
+# Check macOS version
+check_macos_version() {
+    local version=$(sw_vers -productVersion | cut -d. -f1)
+    if [ "$version" -lt 26 ] 2>/dev/null; then
+        echo -e "${YELLOW}⚠${NC}  Warning: Apple container requires macOS 26 (Tahoe)"
+        echo -e "${DIM}   You're on macOS $(sw_vers -productVersion)${NC}"
+        echo ""
+    fi
+}
+
+# Install Apple container tool if missing
+install_container_tool() {
+    echo ""
+    echo -e "${YELLOW}Apple's container tool is not installed.${NC}"
+    echo ""
+    read -p "Install it now? (Y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        echo -e "${DIM}Install manually: https://github.com/apple/container/releases${NC}"
+        exit 1
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Fetching latest release...${NC}"
+    PKG_URL=$(curl -s https://api.github.com/repos/apple/container/releases/latest | grep "browser_download_url.*pkg" | head -1 | cut -d '"' -f 4)
+    
+    if [ -z "$PKG_URL" ]; then
+        echo -e "${RED}✗${NC} Could not find installer"
+        echo -e "${DIM}Install manually: https://github.com/apple/container/releases${NC}"
+        exit 1
+    fi
+    
+    TMPFILE=$(mktemp /tmp/container-installer.XXXXXX.pkg)
+    
+    echo -e "${CYAN}Downloading...${NC}"
+    curl -L --progress-bar -o "$TMPFILE" "$PKG_URL"
+    
+    echo ""
+    echo -e "${CYAN}Installing...${NC} ${DIM}(requires admin password)${NC}"
+    sudo installer -pkg "$TMPFILE" -target /
+    
+    rm -f "$TMPFILE"
+    
+    echo ""
+    echo -e "${CYAN}Starting container system...${NC}"
+    /usr/local/bin/container system start
+    
+    echo ""
+    echo -e "${GREEN}✓${NC} Installation complete!"
+    echo ""
+}
+
+# First run welcome (only for true first-timers)
+first_run_welcome() {
+    # Skip welcome if container tool is already installed (user knows what they're doing)
+    command -v container &>/dev/null && return
+    
+    header
+    echo -e "${GREEN}Welcome to Pi Container!${NC}"
+    echo ""
+    echo "This will set up an isolated Linux environment with pi-coding-agent."
+    echo ""
+    echo -e "${BOLD}What's being created:${NC}"
+    echo "  • ~/pi/workspace   Your project files"
+    echo "  • ~/pi/config      Pi settings & skills"
+    echo "  • Container image  Linux + Node.js + pi"
+    echo ""
+    read -p "Press Enter to continue..."
+    echo ""
+}
+
+# Sync project-local skills into config
+sync_project_skills() {
+    if [ -d "$PROJECT_SKILLS_DIR" ]; then
+        mkdir -p "$CONFIG/skills"
+        rsync -a "$PROJECT_SKILLS_DIR/" "$CONFIG/skills/"
+    fi
+}
+
+# Handle commands
+case "${1:-}" in
+    help|--help|-h)
+        show_help
+        ;;
+    status)
+        show_status
+        ;;
+    stop)
+        stop_container
+        ;;
+    reset)
+        reset_container
+        ;;
+    restart)
+        restart_container
+        shift
+        ;;
+    rebuild)
+        rebuild_image
+        ;;
+    projects|list)
+        list_projects
+        ;;
+esac
+
+# Determine command to run in container
+CONTAINER_CMD="pi"
+WORKDIR="/workspace"
+PROJECT_NAME=""
+
+if [ "$1" = "shell" ] || [ "$1" = "sh" ] || [ "$1" = "bash" ]; then
+    CONTAINER_CMD="/bin/bash"
+    shift
+elif [ -n "$1" ] && [ "$1" != "shell" ]; then
+    # Treat first argument as project name
+    PROJECT_NAME="$1"
+    WORKDIR="/workspace/$PROJECT_NAME"
+    shift
+fi
+
+# Check macOS version
+check_macos_version
+
+# Check if container tool is available
+if ! command -v container &> /dev/null; then
+    install_container_tool
+fi
+
+# Check if container system is running
+if ! container list &>/dev/null; then
+    echo -e "${CYAN}Starting container system...${NC}"
+    container system start >/dev/null 2>&1 &
+    spinner $! "Starting container system"
+fi
+
+# Ensure directories exist
+mkdir -p "$WORKSPACE" "$CONFIG"
+
+# Copy auth.json if it exists and is newer (or doesn't exist in config)
+if [ -f "$AUTH_FILE" ]; then
+    if [ ! -f "$CONFIG/auth.json" ] || [ "$AUTH_FILE" -nt "$CONFIG/auth.json" ]; then
+        cp "$AUTH_FILE" "$CONFIG/auth.json"
+    fi
+fi
+
+# Sync project-local skills (if any)
+sync_project_skills
+
+# Check if this is first run (no image exists)
+FIRST_RUN=false
+if ! container image list 2>/dev/null | grep -q "pi-agent"; then
+    FIRST_RUN=true
+    first_run_welcome
+fi
+
+# Build image if needed
+if [ "$FIRST_RUN" = true ]; then
+    echo -e "${CYAN}Building container image...${NC} ${DIM}(this takes a few minutes)${NC}"
+    echo ""
+    container build -t "$IMAGE_NAME" "$SCRIPT_DIR" 2>&1 | while read line; do
+        # Show only key progress lines
+        if [[ "$line" =~ ^"#"[0-9]|"DONE"|"ERROR" ]]; then
+            echo -e "${DIM}$line${NC}"
+        fi
+    done
+    echo ""
+    echo -e "${GREEN}✓${NC} Image built successfully!"
+    echo ""
+fi
+
+# Create project directory if specified
+if [ -n "$PROJECT_NAME" ]; then
+    mkdir -p "$WORKSPACE/$PROJECT_NAME"
+fi
+
+# Show startup info
+if [ "$CONTAINER_CMD" = "pi" ]; then
+    header
+    if [ -n "$PROJECT_NAME" ]; then
+        echo -e "${DIM}Project:${NC}   ${BOLD}$PROJECT_NAME${NC}"
+        echo -e "${DIM}Path:${NC}      $WORKSPACE/$PROJECT_NAME"
+        echo -e "${DIM}Config:${NC}    $CONFIG"
+    else
+        status_info
+    fi
+    echo ""
+fi
+
+# Run in container
+if container list --all 2>/dev/null | grep -q "$CONTAINER_NAME"; then
+    if container list 2>/dev/null | grep -q "$CONTAINER_NAME"; then
+        # Already running - exec into it
+        [ "$CONTAINER_CMD" = "pi" ] && echo -e "${DIM}Attaching to running container...${NC}"
+        exec container exec -it -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
+    else
+        # Exists but stopped - start then exec to set workdir
+        echo -e "${DIM}Starting container...${NC}"
+        container start "$CONTAINER_NAME" >/dev/null
+        exec container exec -it -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
+    fi
+else
+    # Create new container
+    [ "$CONTAINER_CMD" = "pi" ] && echo -e "${DIM}Creating container...${NC}"
+    
+    exec container run \
+        -it \
+        --name "$CONTAINER_NAME" \
+        --volume "$WORKSPACE:/workspace" \
+        --volume "$CONFIG:/root/.pi/agent" \
+        -w "$WORKDIR" \
+        --cpus 4 \
+        --memory 4G \
+        --ssh \
+        "$IMAGE_NAME" \
+        $CONTAINER_CMD "$@"
+fi

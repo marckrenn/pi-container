@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /Applications/Ghostty.app/Contents/MacOS/ghostty -e /usr/local/bin/pi-container
