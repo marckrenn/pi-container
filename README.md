@@ -218,7 +218,10 @@ pi-container --import-config           # merge into target config
 pi-container --import-config=force     # overwrite target config
 ```
 
-> On first run, if `~/pi/config` is empty, you’ll be **prompted** to import from `~/.pi/agent`.
+**Prompts:**
+- On first run, if `~/pi/config` is empty, you’ll be asked:
+  `Import local pi config from: ~/.pi/agent into: <config_dir>?`
+- If the target config is not empty and you run `--import-config`, you’ll be asked whether to overwrite.
 
 **Project-specific config:**
 ```bash
