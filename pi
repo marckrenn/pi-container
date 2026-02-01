@@ -465,6 +465,42 @@ sync_project_skills() {
     fi
 }
 
+ensure_browser_tools() {
+    local target="$CONFIG_DIR/skills/pi-skills/browser-tools"
+    local source="$PROJECT_SKILLS_DIR/pi-skills/browser-tools"
+
+    if [ "$HEADLESS_BROWSER" != "1" ]; then
+        return
+    fi
+
+    if [ -d "$target" ]; then
+        return
+    fi
+
+    if [ ! -d "$source" ]; then
+        echo -e "${RED}Browser tools not found in project skills.${NC}"
+        return
+    fi
+
+    if [ "$CONFIG_DIR" = "$LOCAL_CONFIG_DIR" ]; then
+        if [ -t 0 ] && [ -t 1 ]; then
+            echo ""
+            echo -e "${YELLOW}Headless browser requires browser-tools skill.${NC}"
+            echo -e "Copy into local pi config ($LOCAL_CONFIG_DIR)?"
+            read -p "Copy now? (y/N) " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                mkdir -p "$LOCAL_CONFIG_DIR/skills"
+                rsync -a "$source/" "$LOCAL_CONFIG_DIR/skills/pi-skills/browser-tools/"
+            fi
+        fi
+        return
+    fi
+
+    mkdir -p "$CONFIG_DIR/skills/pi-skills"
+    rsync -a "$source/" "$target/"
+}
+
 # Import local pi config into target config dir
 import_local_config() {
     local mode="${1:-merge}"
@@ -781,6 +817,9 @@ fi
 
 # Sync project-local skills (if any)
 sync_project_skills
+
+# Ensure browser tools are present when headless browser requested
+ensure_browser_tools
 
 # Check if image exists
 image_exists() {

@@ -173,13 +173,15 @@ Headless Chromium is **disabled by default**.
 Start it explicitly:
 ```bash
 pi-container --browser
-pi-container myapp --browser
+pi-container --project myapp --browser
 ```
 
 Or with env:
 ```bash
 PI_BROWSER=1 pi-container
 ```
+
+When `--browser` is used, the script ensures the **browser-tools** skill is present in the active config. If you’re using `--config shared`, you’ll be asked before copying the skill into your local `~/.pi/agent`.
 
 Manual start (if needed):
 
