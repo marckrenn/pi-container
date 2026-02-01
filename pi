@@ -525,6 +525,11 @@ if container_running; then
     CONTAINER_WAS_RUNNING=true
 fi
 
+TTY_FLAG=""
+if [ -t 0 ] && [ -t 1 ]; then
+    TTY_FLAG="-t"
+fi
+
 if container_exists; then
     if ! container_running; then
         echo -e "${DIM}Starting container...${NC}"
@@ -547,7 +552,7 @@ else
 fi
 
 start_headless_browser_in_container
-container exec -it -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
+container exec -i $TTY_FLAG -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
 EXIT_CODE=$?
 
 if [ "$CONTAINER_WAS_RUNNING" = false ]; then
