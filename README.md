@@ -214,7 +214,8 @@ pi-container --config shared # uses ~/.pi/agent directly
 
 **Import local config (global):**
 ```bash
-pi-container --import-config
+pi-container --import-config           # merge into target config
+pi-container --import-config=force     # overwrite target config
 ```
 
 > On first run, if `~/pi/config` is empty, you’ll be **prompted** to import from `~/.pi/agent`.
@@ -227,6 +228,7 @@ pi-container --project myapp --config project
 **Import local config as project starting point:**
 ```bash
 pi-container --project myapp --config project --import-config
+pi-container --project myapp --config project --import-config=force
 ```
 
 **Fresh profile (new empty config):**

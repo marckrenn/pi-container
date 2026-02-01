@@ -34,7 +34,7 @@ BROWSER_BOOTSTRAP_CMD="cd $BROWSER_TOOLS_DIR && if [ ! -d node_modules ]; then n
 CONFIG_MODE="local"
 CONFIG_DIR_OVERRIDE=""
 PROFILE_NAME=""
-IMPORT_CONFIG=false
+IMPORT_MODE=""
 CONFIG_DIR="$CONFIG_ROOT"
 
 # Colors
@@ -104,7 +104,8 @@ show_help() {
     echo "  --config project      Use ~/pi/config/projects/<project>"
     echo "  --config fresh        New profile under ~/pi/config/profiles"
     echo "  --profile <name>      Use ~/pi/config/profiles/<name>"
-    echo "  --import-config       Copy ~/.pi/agent into config dir"
+    echo "  --import-config       Merge ~/.pi/agent into config dir"
+    echo "  --import-config=force Overwrite config dir from ~/.pi/agent"
     echo ""
     echo -e "${BOLD}Pi passthrough:${NC}"
     echo "  pi-container config               → pi config"
@@ -368,6 +369,7 @@ sync_project_skills() {
 
 # Import local pi config into target config dir
 import_local_config() {
+    local mode="${1:-merge}"
     if [ ! -d "$LOCAL_CONFIG_DIR" ]; then
         return
     fi
@@ -375,7 +377,13 @@ import_local_config() {
         return
     fi
     mkdir -p "$CONFIG_DIR"
-    rsync -a \
+
+    local rsync_flags=("-a")
+    if [ "$mode" = "force" ]; then
+        rsync_flags+=("--delete")
+    fi
+
+    rsync "${rsync_flags[@]}" \
         --exclude 'skills/' \
         --exclude 'cache/' \
         --exclude 'logs/' \
@@ -470,8 +478,25 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --import-config)
-            IMPORT_CONFIG=true
+            IMPORT_MODE="merge"
             shift
+            ;;
+        --import-config=force|--import-config=overwrite)
+            IMPORT_MODE="force"
+            shift
+            ;;
+        --import-config=merge)
+            IMPORT_MODE="merge"
+            shift
+            ;;
+        --force|--overwrite)
+            if [ -n "$IMPORT_MODE" ]; then
+                IMPORT_MODE="force"
+                shift
+            else
+                ARGS+=("$1")
+                shift
+            fi
             ;;
         --fresh)
             CONFIG_MODE="fresh"
@@ -570,18 +595,31 @@ if [ "$CONFIG_DIR" != "$LOCAL_CONFIG_DIR" ]; then
         CONFIG_EMPTY=false
     fi
 
-    if [ "$IMPORT_CONFIG" = true ]; then
-        import_local_config
+    if [ -n "$IMPORT_MODE" ]; then
+        MODE="$IMPORT_MODE"
+        if [ "$CONFIG_EMPTY" = false ] && [ "$MODE" = "merge" ]; then
+            if [ -t 0 ] && [ -t 1 ]; then
+                echo ""
+                echo -e "${YELLOW}Target config not empty.${NC}"
+                echo "Overwrite with local config from $LOCAL_CONFIG_DIR?"
+                read -p "Overwrite? (y/N) " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    MODE="force"
+                fi
+            fi
+        fi
+        import_local_config "$MODE"
         echo "yes" > "$IMPORT_MARKER" 2>/dev/null || true
     elif [ "$CONFIG_EMPTY" = true ] && [ ! -f "$IMPORT_MARKER" ]; then
         if [ -t 0 ] && [ -t 1 ] && [ -d "$LOCAL_CONFIG_DIR" ]; then
             echo ""
-            echo -e "${YELLOW}Import local pi config?${NC}"
-            echo "This will copy ~/.pi/agent into $CONFIG_DIR (one-time)."
+            echo -e "${YELLOW}Import local pi config from:${NC} $LOCAL_CONFIG_DIR"
+            echo -e "${YELLOW}Into:${NC} $CONFIG_DIR"
             read -p "Import now? (y/N) " -n 1 -r
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-                import_local_config
+                import_local_config "merge"
                 echo "yes" > "$IMPORT_MARKER" 2>/dev/null || true
             else
                 echo "no" > "$IMPORT_MARKER" 2>/dev/null || true
