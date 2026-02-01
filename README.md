@@ -236,10 +236,20 @@ rm -rf ~/pi
 
 ## Uninstall
 
+### Reset install (keep workspace + repo)
+
+**One-liner (keeps `~/pi` data):**
+```bash
+pi-container reset && container image delete pi-agent:latest 2>/dev/null || true; rm -f ~/.local/bin/pi-container; rm -f /usr/local/bin/pi-container 2>/dev/null || true; rm -rf /Applications/Pi\ Container.app
+```
+
+### Full uninstall (also remove workspace)
+
 ```bash
 pi-container reset
 container image delete pi-agent:latest
-sudo rm /usr/local/bin/pi-container
+rm -f ~/.local/bin/pi-container
+rm -f /usr/local/bin/pi-container
 rm -rf /Applications/Pi\ Container.app
 rm -rf ~/pi  # optional: remove data
 ```
