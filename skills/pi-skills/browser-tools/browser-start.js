@@ -33,6 +33,11 @@ const CHROME_BIN = process.env.CHROME_BIN ?? DEFAULT_CHROME_BIN;
 
 const args = process.argv.slice(2);
 
+if (process.env.PI_BROWSER_ALLOWED !== "1") {
+	console.error("✗ Browser is disabled. Start pi-container with --browser to enable.");
+	process.exit(1);
+}
+
 const usage = () => {
 	console.log("Usage: browser-start.js [--profile[=name] | --profile-last-used] [--url <url>] [--port <port>] [--auto-port] [--data-dir <path>] [--headless|--headed] [--restart]");
 	console.log("\nOptions:");

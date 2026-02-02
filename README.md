@@ -190,9 +190,9 @@ Then use Spotlight (`Cmd+Space` → "Pi Container") or add to Dock.
 
 The container includes **Chromium** for headless browser automation. A project-local copy of the `browser-tools` skill is included in this repo (so it doesn't modify your global skills).
 
-Headless Chromium is **disabled by default**.
+Headless Chromium is **disabled by default** and **blocked** unless enabled.
 
-Start it explicitly:
+Enable it explicitly:
 ```bash
 pi-container --browser
 pi-container --project myapp --browser
@@ -204,6 +204,11 @@ PI_BROWSER=1 pi-container
 ```
 
 When `--browser` is used, the script ensures the **browser-tools** skill is present in the active config. If you’re using `--config shared`, you’ll be asked before copying the skill into your local `~/.pi/agent`.
+
+If you try to run browser tools without `--browser`, you’ll see:
+```
+Browser is disabled. Start pi-container with --browser to enable.
+```
 
 Manual start (if needed):
 

@@ -28,6 +28,7 @@ LOCAL_CONFIG_DIR="$HOME/.pi/agent"
 AUTH_FILE="$LOCAL_CONFIG_DIR/auth.json"
 PROJECT_SKILLS_DIR="$SCRIPT_DIR/skills"
 HEADLESS_BROWSER=${PI_BROWSER:-0}
+BROWSER_ALLOWED=0
 
 CONFIG_MODE="local"
 CONFIG_DIR_OVERRIDE=""
@@ -190,7 +191,7 @@ show_help() {
     echo -e "${BOLD}Environment:${NC}"
     echo "  PI_CONTAINER_PATH   Override base path (default: ~/pi)"
     echo "  PI_SSH              1/0 to enable/disable SSH forwarding"
-    echo "  PI_BROWSER          1/0 to enable/disable headless browser"
+    echo "  PI_BROWSER          1/0 to allow headless browser"
     echo "  PI_NO_AUTO_INSTALL  1 to disable auto-install of container tool"
     echo "  PI_NODE_IMAGE       Override base image (build arg)"
     echo "  PI_AGENT_VERSION    Override pi version (build arg)"
@@ -543,7 +544,7 @@ start_headless_browser_in_container() {
     [ "$CONTAINER_CMD" != "pi" ] && return
 
     # fire-and-forget; browser-start exits if already running
-    container exec -d ${USER_FLAG[@]} "$CONTAINER_NAME" /bin/bash -lc "$BROWSER_BOOTSTRAP_CMD" >/dev/null 2>&1 || true
+    container exec -d ${USER_FLAG[@]} ${BROWSER_ENV[@]} "$CONTAINER_NAME" /bin/bash -lc "$BROWSER_BOOTSTRAP_CMD" >/dev/null 2>&1 || true
 }
 
 # Handle commands
@@ -593,10 +594,12 @@ while [ $# -gt 0 ]; do
             ;;
         --browser)
             HEADLESS_BROWSER=1
+            BROWSER_ALLOWED=1
             shift
             ;;
         --no-browser)
             HEADLESS_BROWSER=0
+            BROWSER_ALLOWED=0
             shift
             ;;
         --ssh)
@@ -682,6 +685,11 @@ set -- "${ARGS[@]}"
 
 if [ "$CONTAINER_USER" = "root" ] && [ "$CONTAINER_CMD" = "pi" ]; then
     echo -e "${YELLOW}Warning:${NC} running pi as root. Config may use /root unless HOME is overridden."
+fi
+
+# If PI_BROWSER env is set, allow browser
+if [ "${PI_BROWSER:-0}" = "1" ] || [ "${PI_BROWSER:-}" = "true" ]; then
+    BROWSER_ALLOWED=1
 fi
 
 # Resolve config directory
@@ -777,6 +785,11 @@ USER_FLAG=(--user "$CONTAINER_USER")
 SSH_FLAG=()
 if [ "$SSH_ENABLED" = "yes" ]; then
     SSH_FLAG=(--ssh)
+fi
+
+BROWSER_ENV=(--env PI_BROWSER_ALLOWED=0)
+if [ "$BROWSER_ALLOWED" = "1" ]; then
+    BROWSER_ENV=(--env PI_BROWSER_ALLOWED=1)
 fi
 
 # Check if container tool is available
@@ -949,13 +962,14 @@ else
         --cpus 4 \
         --memory 4G \
         ${SSH_FLAG[@]} \
+        ${BROWSER_ENV[@]} \
         "$IMAGE_NAME" \
         /bin/bash -lc "sleep infinity" >/dev/null
     wait_for_container_running
 fi
 
 start_headless_browser_in_container
-container exec -i $TTY_FLAG ${USER_FLAG[@]} ${EXEC_ENV[@]} -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
+container exec -i $TTY_FLAG ${USER_FLAG[@]} ${EXEC_ENV[@]} ${BROWSER_ENV[@]} -w "$WORKDIR" "$CONTAINER_NAME" $CONTAINER_CMD "$@"
 EXIT_CODE=$?
 
 if [ "$CONTAINER_WAS_RUNNING" = false ]; then
