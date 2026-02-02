@@ -29,6 +29,13 @@ pi-container
 **If you previously installed to `/usr/local/bin`:**
 ```bash
 sudo rm /usr/local/bin/pi-container
+rehash   # or: hash -r
+```
+
+**Non‑login shells (Ghostty etc.)**
+If your shell doesn’t read `~/.zprofile`, also add PATH to `~/.zshrc`:
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 ```
 
 **Or curl installer:**

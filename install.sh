@@ -36,7 +36,13 @@ if [ -e /usr/local/bin/pi-container ]; then
     echo ""
     echo "⚠ Found /usr/local/bin/pi-container (legacy install)."
     echo "  This may shadow ~/.local/bin in your PATH."
-    echo "  Remove with: sudo rm /usr/local/bin/pi-container"
+    read -p "Remove it now? (y/N) " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sudo rm /usr/local/bin/pi-container || true
+    else
+        echo "Remove manually: sudo rm /usr/local/bin/pi-container"
+    fi
 fi
 
 # Ensure PATH includes ~/.local/bin
@@ -46,17 +52,27 @@ if ! echo "$PATH" | tr ':' '\n' | grep -q "^$HOME/.local/bin$"; then
     TARGET_SHELL="${SHELL##*/}"
     if [ "$TARGET_SHELL" = "zsh" ]; then
         PROFILE_FILE="$HOME/.zprofile"
+        RC_FILE="$HOME/.zshrc"
     elif [ "$TARGET_SHELL" = "bash" ]; then
         PROFILE_FILE="$HOME/.bash_profile"
+        RC_FILE="$HOME/.bashrc"
     else
         PROFILE_FILE="$HOME/.profile"
+        RC_FILE="$HOME/.profile"
     fi
 
     if [ ! -f "$PROFILE_FILE" ] || ! grep -q "\.local/bin" "$PROFILE_FILE"; then
         printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE_FILE"
     fi
 
+    if [ "$RC_FILE" != "$PROFILE_FILE" ]; then
+        if [ ! -f "$RC_FILE" ] || ! grep -q "\.local/bin" "$RC_FILE"; then
+            printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$RC_FILE"
+        fi
+    fi
+
     echo "Added to $PROFILE_FILE"
+    [ -n "$RC_FILE" ] && echo "Added to $RC_FILE"
     echo "Reload your shell or run: source $PROFILE_FILE"
 fi
 
