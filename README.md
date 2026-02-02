@@ -127,12 +127,12 @@ Projects are created automatically if they don't exist.
 
 ## Shell Access
 
-By default, the container runs as **non‑root user `pi`**.
+By default, the container runs as **non‑root user `node`** (from the base image).
 
 Open a bash shell:
 
 ```bash
-pi-container shell          # runs as user "pi"
+pi-container shell          # runs as user "node"
 
 # For root (apt install):
 pi-container shell --root
@@ -157,8 +157,8 @@ pip install <package>       # Python packages
 | Host | Container |
 |------|-----------|
 | `~/pi/workspace` | `/workspace` |
-| `~/pi/config` | `/home/pi/.pi/agent` (default config) |
-| `~/.pi/agent` | `/home/pi/.pi/agent` (when `--config shared`) |
+| `~/pi/config` | `/home/node/.pi/agent` (default config) |
+| `~/.pi/agent` | `/home/node/.pi/agent` (when `--config shared`) |
 
 Both directories are **live mounts** — changes sync instantly.
 
@@ -209,7 +209,7 @@ Manual start (if needed):
 
 ```bash
 pi-container shell
-cd /home/pi/.pi/agent/skills/pi-skills/browser-tools
+cd /home/node/.pi/agent/skills/pi-skills/browser-tools
 npm install
 ./browser-start.js --headless
 ```

@@ -36,8 +36,9 @@ IMPORT_MODE=""
 CONFIG_DIR="$CONFIG_ROOT"
 
 PREFS_FILE="$BASE_PATH/.pi-container-prefs"
-CONTAINER_CONFIG_PATH="/home/pi/.pi/agent"
-CONTAINER_USER="pi"
+CONTAINER_CONFIG_PATH="/home/node/.pi/agent"
+CONTAINER_HOME="/home/node"
+CONTAINER_USER="node"
 SSH_ENABLED=""
 
 BROWSER_TOOLS_DIR="$CONTAINER_CONFIG_PATH/skills/pi-skills/browser-tools"
@@ -110,6 +111,18 @@ pref_prompt() {
         pref_set "$key" "$default"
         echo "$default"
     fi
+}
+
+set_container_paths() {
+    if [ "$CONTAINER_USER" = "root" ]; then
+        CONTAINER_HOME="/root"
+        CONTAINER_CONFIG_PATH="/root/.pi/agent"
+    else
+        CONTAINER_HOME="/home/node"
+        CONTAINER_CONFIG_PATH="/home/node/.pi/agent"
+    fi
+    BROWSER_TOOLS_DIR="$CONTAINER_CONFIG_PATH/skills/pi-skills/browser-tools"
+    BROWSER_BOOTSTRAP_CMD="cd $BROWSER_TOOLS_DIR && if [ ! -d node_modules ]; then npm install --silent; fi; ./browser-start.js --headless --port 9222 || true"
 }
 
 # Print header
@@ -732,6 +745,34 @@ fi
 # Check macOS version
 check_macos_version
 
+# Determine whether image supports non-root user
+image_supports_user() {
+    local user="$1"
+    container run --rm "$IMAGE_NAME" /bin/bash -lc "id -u $user" >/dev/null 2>&1
+}
+
+# If using non-root user but image doesn't support it, prompt to rebuild or fallback
+if [ "$CONTAINER_USER" != "root" ]; then
+    if ! image_supports_user "$CONTAINER_USER"; then
+        if [ -t 0 ] && [ -t 1 ]; then
+            echo ""
+            echo -e "${YELLOW}Image does not include user '${CONTAINER_USER}'.${NC}"
+            read -p "Rebuild image now? (y/N) " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                rebuild_image
+            else
+                echo -e "${YELLOW}Falling back to root.${NC}"
+                CONTAINER_USER="root"
+            fi
+        else
+            CONTAINER_USER="root"
+        fi
+    fi
+fi
+
+set_container_paths
+
 USER_FLAG=(--user "$CONTAINER_USER")
 SSH_FLAG=()
 if [ "$SSH_ENABLED" = "yes" ]; then
@@ -887,8 +928,8 @@ if [ -t 0 ] && [ -t 1 ]; then
 fi
 
 EXEC_ENV=()
-if [ "$CONTAINER_USER" = "root" ] && [ "$CONTAINER_CMD" = "pi" ]; then
-    EXEC_ENV=(--env HOME=/home/pi)
+if [ "$CONTAINER_CMD" = "pi" ]; then
+    EXEC_ENV=(--env HOME="$CONTAINER_HOME")
 fi
 
 if container_exists; then

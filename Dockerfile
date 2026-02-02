@@ -29,16 +29,13 @@ RUN ln -s $(which fdfind) /usr/local/bin/fd || true
 # Install pi-coding-agent globally
 RUN npm install -g @mariozechner/pi-coding-agent@${PI_VERSION}
 
-# Create non-root user
-RUN useradd -m -u 1000 -s /bin/bash pi
-
-# Create directories for mounted volumes
-RUN mkdir -p /workspace /home/pi/.pi/agent \
-    && chown -R pi:pi /home/pi
+# Create directories for mounted volumes (use existing 'node' user)
+RUN mkdir -p /workspace /home/node/.pi/agent \
+    && chown -R node:node /home/node /workspace
 
 # Set workspace as the default working directory
 WORKDIR /workspace
 
 # Default command runs pi
-USER pi
+USER node
 CMD ["pi"]
