@@ -53,7 +53,7 @@ if ! echo "$PATH" | tr ':' '\n' | grep -q "^$HOME/.local/bin$"; then
     fi
 
     if [ ! -f "$PROFILE_FILE" ] || ! grep -q "\.local/bin" "$PROFILE_FILE"; then
-        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE_FILE"
+        printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE_FILE"
     fi
 
     echo "Added to $PROFILE_FILE"
