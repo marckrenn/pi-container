@@ -29,6 +29,8 @@ AUTH_FILE="$LOCAL_CONFIG_DIR/auth.json"
 PROJECT_SKILLS_DIR="$SCRIPT_DIR/skills"
 HEADLESS_BROWSER=${PI_BROWSER:-0}
 BROWSER_ALLOWED=0
+RESTRICT_WORKSPACE=0
+WORKSPACE_MOUNT="$WORKSPACE"
 
 CONFIG_MODE="local"
 CONFIG_DIR_OVERRIDE=""
@@ -138,7 +140,7 @@ header() {
 
 # Print status info
 status_info() {
-    echo -e "${DIM}Workspace:${NC} $WORKSPACE"
+    echo -e "${DIM}Workspace:${NC} $WORKSPACE_MOUNT"
     echo -e "${DIM}Config:${NC}    $CONFIG_DIR"
     echo ""
 }
@@ -151,6 +153,7 @@ show_help() {
     echo "  pi-container --project ${CYAN}<name>${NC}    Launch pi in project folder"
     echo "  pi-container project ${CYAN}<name>${NC}     Same as --project"
     echo "  pi-container --project ${CYAN}<name>${NC} --browser  Launch pi + headless browser"
+    echo "  pi-container --project ${CYAN}<name>${NC} --restrict  Mount only that project"
     echo "  pi-container --ssh                Enable SSH agent forwarding"
     echo "  pi-container --no-ssh             Disable SSH forwarding"
     echo "  pi-container shell --root         Root shell (for apt install)"
@@ -179,14 +182,15 @@ show_help() {
     echo "  pi-container -- --help            → pi --help"
     echo ""
     echo -e "${BOLD}Projects:${NC}"
-    echo "  pi-container --project myapp      Create/open ~/pi/workspace/myapp"
-    echo "  pi-container project myapp        Same as above"
-    echo "  pi-container --project myapp --browser  Start headless browser too"
-    echo "  pi-container project list         List all projects"
+    echo "  pi-container --project myapp             Create/open ~/pi/workspace/myapp"
+    echo "  pi-container --project myapp --restrict  Mount only that project"
+    echo "  pi-container project myapp               Same as above"
+    echo "  pi-container --project myapp --browser   Start headless browser too"
+    echo "  pi-container project list                List all projects"
     echo ""
     echo -e "${BOLD}Directories:${NC}"
-    echo "  ~/pi/workspace   →  /workspace          (your files)"
-    echo "  ~/pi/config      →  $CONTAINER_CONFIG_PATH   (pi config)"
+    echo "  $WORKSPACE_MOUNT   →  /workspace          (mounted)"
+    echo "  $CONFIG_DIR        →  $CONTAINER_CONFIG_PATH   (pi config)"
     echo ""
     echo -e "${BOLD}Environment:${NC}"
     echo "  PI_CONTAINER_PATH   Override base path (default: ~/pi)"
@@ -602,6 +606,10 @@ while [ $# -gt 0 ]; do
             BROWSER_ALLOWED=0
             shift
             ;;
+        --restrict|--project-only)
+            RESTRICT_WORKSPACE=1
+            shift
+            ;;
         --ssh)
             SSH_ENABLED="yes"
             shift
@@ -678,7 +686,12 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -n "$PROJECT_NAME" ]; then
-    WORKDIR="/workspace/$PROJECT_NAME"
+    if [ "$RESTRICT_WORKSPACE" = "1" ]; then
+        WORKDIR="/workspace"
+        WORKSPACE_MOUNT="$WORKSPACE/$PROJECT_NAME"
+    else
+        WORKDIR="/workspace/$PROJECT_NAME"
+    fi
 fi
 
 set -- "${ARGS[@]}"
@@ -690,6 +703,11 @@ fi
 # If PI_BROWSER env is set, allow browser
 if [ "${PI_BROWSER:-0}" = "1" ] || [ "${PI_BROWSER:-}" = "true" ]; then
     BROWSER_ALLOWED=1
+fi
+
+if [ "$RESTRICT_WORKSPACE" = "1" ] && [ -z "$PROJECT_NAME" ]; then
+    echo -e "${RED}Error:${NC} --restrict requires --project <name>"
+    exit 1
 fi
 
 # Resolve config directory
@@ -806,6 +824,9 @@ fi
 
 # Ensure directories exist
 mkdir -p "$WORKSPACE"
+if [ -n "$PROJECT_NAME" ]; then
+    mkdir -p "$WORKSPACE/$PROJECT_NAME"
+fi
 if [ "$CONFIG_DIR" != "$LOCAL_CONFIG_DIR" ]; then
     mkdir -p "$CONFIG_DIR"
 fi
@@ -913,6 +934,9 @@ if [ "$CONTAINER_CMD" = "pi" ]; then
     if [ -n "$PROJECT_NAME" ]; then
         echo -e "${DIM}Project:${NC}   ${BOLD}$PROJECT_NAME${NC}"
         echo -e "${DIM}Path:${NC}      $WORKSPACE/$PROJECT_NAME"
+        if [ "$RESTRICT_WORKSPACE" = "1" ]; then
+            echo -e "${DIM}Mount:${NC}     $WORKSPACE_MOUNT → /workspace"
+        fi
         echo -e "${DIM}Config:${NC}    $CONFIG_DIR"
     else
         status_info
@@ -955,7 +979,7 @@ else
     echo -e "${DIM}Creating container...${NC}"
     container run -d \
         --name "$CONTAINER_NAME" \
-        --volume "$WORKSPACE:/workspace" \
+        --volume "$WORKSPACE_MOUNT:/workspace" \
         --volume "$CONFIG_DIR:$CONTAINER_CONFIG_PATH" \
         -w "$WORKDIR" \
         ${USER_FLAG[@]} \

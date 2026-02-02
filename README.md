@@ -64,6 +64,7 @@ On first run, the script will:
 ```bash
 pi-container                          # Launch pi in /workspace
 pi-container --project <name>         # Launch pi in project folder
+pi-container --project <name> --restrict  # Mount only that project
 pi-container project <name>           # Same as --project
 pi-container --project <name> --browser  # Launch pi + headless browser
 pi-container --ssh                     # Enable SSH forwarding
@@ -93,10 +94,11 @@ pi-container -- --help                # -> pi --help
 Work on different projects in isolated folders:
 
 ```bash
-pi-container --project myapp         # Opens ~/pi/workspace/myapp
+pi-container --project myapp            # Opens ~/pi/workspace/myapp
+pi-container --project myapp --restrict # Only mount that project
 pi-container --project myapp --browser  # Start browser too
-pi-container project api-server      # Same as --project
-pi-container project list            # List projects
+pi-container project api-server         # Same as --project
+pi-container project list               # List projects
 ```
 
 ### Pi passthrough
@@ -156,7 +158,7 @@ pip install <package>       # Python packages
 
 | Host | Container |
 |------|-----------|
-| `~/pi/workspace` | `/workspace` |
+| `~/pi/workspace` | `/workspace` (or project-only with `--restrict`) |
 | `~/pi/config` | `/home/node/.pi/agent` (default config) |
 | `~/.pi/agent` | `/home/node/.pi/agent` (when `--config shared`) |
 
