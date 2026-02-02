@@ -257,6 +257,23 @@ container_has_ssh() {
     container inspect "$CONTAINER_NAME" 2>/dev/null | grep -q "ssh-auth.sock"
 }
 
+container_workspace_source() {
+    container inspect "$CONTAINER_NAME" 2>/dev/null | python3 - <<'PY'
+import json,sys
+try:
+    data=json.load(sys.stdin)
+    if not data:
+        sys.exit(0)
+    mounts=data[0].get("configuration",{}).get("mounts",[])
+    for m in mounts:
+        if m.get("destination") == "/workspace":
+            print(m.get("source",""))
+            sys.exit(0)
+except Exception:
+    pass
+PY
+}
+
 ensure_container_compat() {
     if container_exists && ! container_uses_sleep; then
         echo -e "${YELLOW}Updating container entrypoint...${NC}"
@@ -279,6 +296,24 @@ ensure_container_compat() {
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 container stop "$CONTAINER_NAME" 2>/dev/null || true
                 container delete "$CONTAINER_NAME" 2>/dev/null || true
+            fi
+        fi
+    fi
+
+    if container_exists && [ "$RESTRICT_WORKSPACE" = "1" ]; then
+        local source
+        source=$(container_workspace_source || true)
+        if [ -n "$source" ] && [ "$source" != "$WORKSPACE_MOUNT" ]; then
+            if [ -t 0 ] && [ -t 1 ]; then
+                echo ""
+                echo -e "${YELLOW}Workspace is mounted as:${NC} $source"
+                echo -e "${YELLOW}Restricted mount requested:${NC} $WORKSPACE_MOUNT"
+                read -p "Recreate container to apply restriction? (y/N) " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    container stop "$CONTAINER_NAME" 2>/dev/null || true
+                    container delete "$CONTAINER_NAME" 2>/dev/null || true
+                fi
             fi
         fi
     fi

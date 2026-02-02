@@ -101,6 +101,7 @@ pi-container project api-server         # Same as --project
 pi-container project list               # List projects
 ```
 
+> If the container was created without `--restrict`, it must be recreated once to apply the restricted mount.
 ### Pi passthrough
 
 You can call pi subcommands directly (no hardcoded list):
