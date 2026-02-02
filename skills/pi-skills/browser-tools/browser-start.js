@@ -34,7 +34,7 @@ const CHROME_BIN = process.env.CHROME_BIN ?? DEFAULT_CHROME_BIN;
 const args = process.argv.slice(2);
 
 const usage = () => {
-	console.log("Usage: browser-start.js [--profile[=name] | --profile-last-used] [--url <url>] [--port <port>] [--auto-port] [--data-dir <path>] [--headless] [--restart]");
+	console.log("Usage: browser-start.js [--profile[=name] | --profile-last-used] [--url <url>] [--port <port>] [--auto-port] [--data-dir <path>] [--headless|--headed] [--restart]");
 	console.log("\nOptions:");
 	console.log("  --profile [name]        Copy your Chrome profile (cookies, logins).");
 	console.log("                          If name is omitted, use Default profile.");
@@ -44,6 +44,7 @@ const usage = () => {
 	console.log("  --auto-port             Pick the next free port (default behavior)");
 	console.log("  --data-dir <path>       Override the user data directory");
 	console.log("  --headless              Run Chrome in headless mode");
+	console.log("  --headed                Force headed mode (disable auto headless)");
 	console.log("  --restart               Restart Chrome if it's already running on the port");
 	console.log("  --restore-tabs          Restore open tabs on restart (default)");
 	console.log("  --no-restore-tabs       Do not restore tabs on restart");
@@ -69,6 +70,7 @@ let portSpecified = false;
 let autoPort = true;
 let dataDir = null;
 let headless = false;
+let forceHeaded = false;
 let restart = false;
 let restoreTabs = true;
 
@@ -122,6 +124,9 @@ for (let i = 0; i < args.length; i++) {
 		startUrl = value;
 	} else if (arg === "--headless") {
 		headless = true;
+	} else if (arg === "--headed" || arg === "--no-headless") {
+		forceHeaded = true;
+		headless = false;
 	} else if (arg === "--restart") {
 		restart = true;
 	} else if (arg === "--restore-tabs") {
@@ -168,6 +173,12 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const useProfile = profileMode !== null;
+
+const hasDisplay = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+if (!headless && !forceHeaded && IS_LINUX && !hasDisplay) {
+	headless = true;
+	console.log("ℹ No DISPLAY found; defaulting to --headless. Use --headed to override.");
+}
 
 const isPortOpen = (portToCheck) =>
 	new Promise((resolve) => {

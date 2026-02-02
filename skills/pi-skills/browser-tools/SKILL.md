@@ -24,6 +24,7 @@ npm install
 {baseDir}/browser-start.js --profile "Work"              # Copy specific profile by name
 {baseDir}/browser-start.js --profile-last-used           # Copy last used profile
 {baseDir}/browser-start.js --headless                    # Headless mode
+{baseDir}/browser-start.js --headed                      # Force headed mode
 {baseDir}/browser-start.js --url https://mail.google.com # Open a page after launch
 {baseDir}/browser-start.js --auto-port                   # Pick next free port (default)
 {baseDir}/browser-start.js --port 9223                   # Separate instance on another port
@@ -44,6 +45,8 @@ export CHROME_DIR=/path/to/profile
 ### Headless mode
 
 Start with `--headless` for background automation. When user interaction is needed, restart the same port without `--headless` using `--restart` to show the UI (tabs are restored by default; add `--no-restore-tabs` for a clean session).
+
+**Container default:** when running on Linux **without a DISPLAY**, the script automatically switches to headless mode. Use `--headed` to override.
 
 If Chrome is already running on `:9222` and the user requests headless mode or a different profile, start a second instance on another port (or rely on the default auto-port selection) instead of restarting, unless the user explicitly asks to replace the current instance.
 
