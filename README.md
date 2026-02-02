@@ -26,6 +26,11 @@ source ~/.zprofile
 pi-container
 ```
 
+**If you previously installed to `/usr/local/bin`:**
+```bash
+sudo rm /usr/local/bin/pi-container
+```
+
 **Or curl installer:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/marckrenn/pi-container/main/install.sh | bash

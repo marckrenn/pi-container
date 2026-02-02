@@ -31,6 +31,14 @@ echo "Creating symlink..."
 mkdir -p "$HOME/.local/bin"
 ln -sf "$INSTALL_DIR/pi" "$HOME/.local/bin/pi-container"
 
+# Warn about legacy /usr/local/bin install
+if [ -e /usr/local/bin/pi-container ]; then
+    echo ""
+    echo "⚠ Found /usr/local/bin/pi-container (legacy install)."
+    echo "  This may shadow ~/.local/bin in your PATH."
+    echo "  Remove with: sudo rm /usr/local/bin/pi-container"
+fi
+
 # Ensure PATH includes ~/.local/bin
 if ! echo "$PATH" | tr ':' '\n' | grep -q "^$HOME/.local/bin$"; then
     echo "Adding ~/.local/bin to PATH..."
