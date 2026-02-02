@@ -31,6 +31,16 @@ pi-container
 curl -fsSL https://raw.githubusercontent.com/marckrenn/pi-container/main/install.sh | bash
 ```
 
+**Update to latest (one‑liner):**
+```bash
+cd ~/.pi-container && git pull && ln -sf ~/.pi-container/pi ~/.local/bin/pi-container
+```
+
+**Update + rebuild (if Dockerfile changed):**
+```bash
+cd ~/.pi-container && git pull && ln -sf ~/.pi-container/pi ~/.local/bin/pi-container && pi-container rebuild
+```
+
 On first run, the script will:
 1. Install Apple's `container` tool (if needed)
 2. Build the Linux container image
