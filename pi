@@ -258,8 +258,7 @@ container_has_ssh() {
 }
 
 container_workspace_source() {
-    container inspect "$CONTAINER_NAME" 2>/dev/null | python3 - <<'PY'
-import json,sys
+    container inspect "$CONTAINER_NAME" 2>/dev/null | python3 -c 'import json,sys
 try:
     data=json.load(sys.stdin)
     if not data:
@@ -267,11 +266,10 @@ try:
     mounts=data[0].get("configuration",{}).get("mounts",[])
     for m in mounts:
         if m.get("destination") == "/workspace":
-            print(m.get("source",""))
+            print(m.get("source", ""))
             sys.exit(0)
 except Exception:
-    pass
-PY
+    pass'
 }
 
 ensure_container_compat() {
